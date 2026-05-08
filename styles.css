@@ -40,7 +40,13 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding-bottom: 160px; /* room for playback bar */
+  /* Reserve room so the fixed playback bar never covers the last list item.
+     The bar itself adds env(safe-area-inset-bottom); we add a generous buffer. */
+  padding-bottom: calc(220px + env(safe-area-inset-bottom));
+}
+@media (min-width: 720px) {
+  /* Two-row playback bar on desktop is shorter — less buffer needed */
+  body { padding-bottom: calc(180px + env(safe-area-inset-bottom)); }
 }
 
 button {
