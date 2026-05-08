@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <title>Bloordale Walk-Up</title>
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -20,11 +20,19 @@
 </head>
 <body>
   <header>
-    <h1>Bloordale Bombers</h1>
-    <nav>
-      <button class="tab active" data-tab="lineup">Lineup</button>
-      <button class="tab" data-tab="roster">Roster</button>
-    </nav>
+    <div class="header-inner">
+      <div class="brand" aria-label="Bloordale Bombers Walk-Up">
+        <span class="brand-mark" aria-hidden="true">B</span>
+        <span class="brand-text">
+          <span class="brand-name">Bloordale</span>
+          <span class="brand-sub">Bombers · Walk-Up</span>
+        </span>
+      </div>
+      <nav class="tab-group" role="tablist" aria-label="Sections">
+        <button class="tab active" data-tab="lineup" role="tab" aria-selected="true">Lineup</button>
+        <button class="tab" data-tab="roster" role="tab" aria-selected="false">Roster</button>
+      </nav>
+    </div>
   </header>
 
   <main>
@@ -122,6 +130,6 @@
   <audio id="announcement-audio" preload="auto"></audio>
   <audio id="walkup-audio" preload="auto"></audio>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
