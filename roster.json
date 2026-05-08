@@ -3,94 +3,104 @@
     "number": 5,
     "firstName": "Adrian",
     "lastName": "Stevanovic",
-    "announcement": "audio/announcements/05-stevanovic.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/adrian.wav",
+    "walkup": "audio/simple/walkups/adrian.mp3",
+    "song": "Fair Trade"
   },
   {
     "number": 19,
     "firstName": "Alexander",
     "lastName": "Fiume",
-    "announcement": "audio/announcements/19-fiume.mp3",
-    "walkup": {
-      "file": "audio/walkups/19-fiume.mp3",
-      "startTime": 0
-    }
+    "announcement": "audio/simple/announcements/alexander.wav",
+    "walkup": "audio/simple/walkups/alexander.mp3",
+    "song": "Tsunami"
   },
   {
     "number": 7,
     "firstName": "Axel",
     "lastName": "Pettengell",
-    "announcement": "audio/announcements/07-pettengell.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/axel.wav",
+    "walkup": "audio/simple/walkups/axel.mp3",
+    "song": "All I Do Is Win"
   },
   {
     "number": 35,
     "firstName": "Connor",
     "lastName": "Nascimento",
-    "announcement": "audio/announcements/35-nascimento.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/connor.wav",
+    "walkup": "audio/simple/walkups/connor.mp3",
+    "song": "We On Go"
   },
   {
     "number": 9,
     "firstName": "Devin",
     "lastName": "Sen",
-    "announcement": "audio/announcements/09-sen.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/devin.wav",
+    "walkup": "audio/simple/walkups/devin.mp3",
+    "song": "Home Run"
   },
   {
     "number": 17,
     "firstName": "Emmett",
     "lastName": "Pitton",
-    "announcement": "audio/announcements/17-pitton.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/emmett.wav",
+    "walkup": "audio/simple/walkups/emmett.mp3",
+    "song": "Give It Away"
   },
   {
     "number": 10,
     "firstName": "Everett",
     "lastName": "Funston",
-    "announcement": "audio/announcements/10-funston.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/everett.wav",
+    "walkup": "audio/simple/walkups/everett.mp3",
+    "song": "Run It"
   },
   {
     "number": 14,
     "firstName": "Gregory",
     "lastName": "Stratigopoulos",
-    "announcement": "audio/announcements/14-stratigopoulos.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/gregory.wav",
+    "walkup": "audio/simple/walkups/gregory.mp3",
+    "song": "Enter Sandman"
   },
   {
     "number": 36,
     "firstName": "James",
     "lastName": "Reason",
-    "announcement": "audio/announcements/36-reason.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/james.wav",
+    "walkup": "audio/simple/walkups/james.mp3",
+    "song": "Seven Nation Army"
   },
   {
     "number": 99,
     "firstName": "Lincoln",
     "lastName": "Shamliyan Bowen",
-    "announcement": "audio/announcements/99-shamliyan-bowen.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/lincoln.wav",
+    "walkup": "audio/simple/walkups/lincoln.mp3",
+    "song": "Trend Setter"
   },
   {
     "number": 15,
     "firstName": "Ozzy",
     "lastName": "Day",
-    "announcement": "audio/announcements/15-day.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/ozzy.wav",
+    "walkup": "audio/simple/walkups/ozzy.mp3",
+    "song": "Thick Of It"
   },
   {
     "number": 12,
     "firstName": "Ryder",
     "lastName": "Varrik",
-    "announcement": "audio/announcements/12-varrik.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/ryder.wav",
+    "walkup": "audio/simple/walkups/ryder.mp3",
+    "song": "Lose Yourself"
   },
   {
     "number": 78,
     "firstName": "William",
     "lastName": "Manz",
-    "announcement": "audio/announcements/78-manz.mp3",
-    "walkup": null
+    "announcement": "audio/simple/announcements/william.wav",
+    "walkup": "audio/simple/walkups/william.mp3",
+    "song": "The Lion Sleeps Tonight"
   }
 ]

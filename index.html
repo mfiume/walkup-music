@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <title>Walk-Up Music</title>
+  <title>Walk-Up Music — Simple</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -19,7 +19,6 @@
     <nav>
       <button class="tab active" data-tab="lineup">Lineup</button>
       <button class="tab" data-tab="roster">Roster</button>
-      <button class="tab" data-tab="settings">Settings</button>
     </nav>
   </header>
 
@@ -37,39 +36,16 @@
     </section>
 
     <section id="roster-view" class="view"></section>
-
-    <section id="settings-view" class="view">
-      <div class="settings-section">
-        <h3>Playback Duration</h3>
-        <p class="settings-desc">How long walk-up songs play before fading out (seconds).</p>
-        <div class="settings-row">
-          <input type="range" id="global-duration" min="5" max="30" value="30" step="5">
-          <span id="global-duration-label" class="settings-value">30s</span>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <h3>Walk-Up Songs</h3>
-        <p class="settings-desc">Set the start time for each player's song.</p>
-        <div id="song-settings-list"></div>
-      </div>
-    </section>
   </main>
 
   <div id="playback-bar">
     <div id="playback-main">
       <div id="playback-info">
-        <img id="playback-art" class="playback-art hidden" src="" alt="">
         <div id="playback-text">
           <div id="playback-primary"><span id="playback-number"></span> <span id="playback-name">No player selected</span></div>
           <div id="playback-song-name" class="hidden"></div>
         </div>
         <span id="playback-status"></span>
-        <button id="expand-btn" aria-label="Expand">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="18 15 12 9 6 15"></polyline>
-          </svg>
-        </button>
       </div>
       <div id="transport">
         <button id="prev-btn" class="transport-btn" disabled aria-label="Previous">
@@ -90,87 +66,8 @@
     </div>
   </div>
 
-  <div id="confirm-modal" class="hidden">
-    <div id="confirm-backdrop"></div>
-    <div id="confirm-box">
-      <div id="confirm-message"></div>
-      <div id="confirm-actions">
-        <button id="confirm-cancel">Cancel</button>
-        <button id="confirm-ok">Remove</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="search-modal" class="hidden">
-    <div id="search-modal-backdrop"></div>
-    <div id="search-modal-content">
-      <div id="search-modal-header">
-        <div>
-          <div id="search-modal-title">Find a Walk-Up Song</div>
-          <div id="search-player-label"></div>
-        </div>
-        <button id="search-close" aria-label="Close">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div id="search-input-wrap">
-        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="search-input" placeholder="Search songs, artists..." autocomplete="off" autocorrect="off" spellcheck="false">
-      </div>
-      <div id="search-results">
-        <div class="search-empty">Search for a song above</div>
-      </div>
-    </div>
-  </div>
-
-  <div id="now-playing" class="hidden">
-    <button id="collapse-btn" aria-label="Collapse">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </button>
-
-    <div id="np-current-label">Now Batting</div>
-
-    <div id="np-batter">
-      <div id="np-number"></div>
-      <div id="np-name"></div>
-      <div id="np-song-line" class="hidden">
-        <img id="np-art" class="np-art" src="" alt="">
-        <span id="np-song-name"></span>
-      </div>
-      <div id="np-up-next">
-        <div id="np-next-batter">—</div>
-      </div>
-    </div>
-
-    <div id="np-transport">
-      <button id="np-prev-btn" class="np-transport-btn" aria-label="Previous">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="5" width="3" height="14"/><polygon points="21 5 9 12 21 19 21 5"/></svg>
-      </button>
-      <button id="np-play-pause-btn" class="np-transport-btn primary" aria-label="Play">
-        <svg id="np-play-icon" width="44" height="44" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-        <svg id="np-pause-icon" width="44" height="44" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
-      </button>
-      <button id="np-next-btn" class="np-transport-btn" aria-label="Next">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="3 5 15 12 3 19 3 5"/><rect x="18" y="5" width="3" height="14"/></svg>
-      </button>
-    </div>
-
-    <div id="np-progress">
-      <div id="np-progress-bar">
-        <div id="np-progress-fill"></div>
-      </div>
-      <div id="np-times">
-        <span id="np-time-current">0:00</span>
-        <span id="np-time-total">0:00</span>
-      </div>
-    </div>
-
-  </div>
-
-  <audio id="announcement-audio" preload="none"></audio>
-  <audio id="walkup-audio" preload="none"></audio>
+  <audio id="announcement-audio" preload="auto"></audio>
+  <audio id="walkup-audio" preload="auto"></audio>
 
   <script src="app.js"></script>
 </body>
