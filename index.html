@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <title>Bloordale Walk-Up</title>
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=6">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -51,6 +51,11 @@
           <div id="playback-song-name" class="hidden"></div>
         </div>
         <span id="playback-status"></span>
+        <button id="expand-btn" aria-label="Open Now Playing">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+        </button>
       </div>
       <div id="transport">
         <button id="prev-btn" class="transport-btn" disabled aria-label="Previous">
@@ -71,9 +76,52 @@
     </div>
   </div>
 
+  <div id="now-playing" class="hidden">
+    <div id="np-top">
+      <button id="collapse-btn" aria-label="Close Now Playing">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <div id="np-current-label">Now Batting</div>
+      <div style="width: 44px"></div><!-- spacer for centering -->
+    </div>
+
+    <div id="np-batter">
+      <div id="np-number"></div>
+      <div id="np-name"></div>
+      <div id="np-song-name" class="hidden"></div>
+    </div>
+
+    <div id="np-up-next"></div>
+
+    <div id="np-progress">
+      <div id="np-progress-bar">
+        <div id="np-progress-fill"></div>
+      </div>
+      <div id="np-times">
+        <span id="np-time-current">0:00</span>
+        <span id="np-time-total">0:00</span>
+      </div>
+    </div>
+
+    <div id="np-transport">
+      <button id="np-prev-btn" class="np-transport-btn" aria-label="Previous">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="5" width="3" height="14"/><polygon points="21 5 9 12 21 19 21 5"/></svg>
+      </button>
+      <button id="np-play-pause-btn" class="np-transport-btn primary" aria-label="Play">
+        <svg id="np-play-icon" width="44" height="44" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        <svg id="np-pause-icon" width="44" height="44" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
+      </button>
+      <button id="np-next-btn" class="np-transport-btn" aria-label="Next">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="3 5 15 12 3 19 3 5"/><rect x="18" y="5" width="3" height="14"/></svg>
+      </button>
+    </div>
+  </div>
+
   <audio id="announcement-audio" preload="auto"></audio>
   <audio id="walkup-audio" preload="auto"></audio>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

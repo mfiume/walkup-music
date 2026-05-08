@@ -57,6 +57,23 @@
   const announcementAudio = document.getElementById('announcement-audio');
   const walkupAudio = document.getElementById('walkup-audio');
 
+  // Now Playing (fullscreen overlay) refs
+  const nowPlaying = document.getElementById('now-playing');
+  const expandBtn = document.getElementById('expand-btn');
+  const collapseBtn = document.getElementById('collapse-btn');
+  const npNumber = document.getElementById('np-number');
+  const npName = document.getElementById('np-name');
+  const npSongName = document.getElementById('np-song-name');
+  const npUpNext = document.getElementById('np-up-next');
+  const npProgressFill = document.getElementById('np-progress-fill');
+  const npTimeCurrent = document.getElementById('np-time-current');
+  const npTimeTotal = document.getElementById('np-time-total');
+  const npPrevBtn = document.getElementById('np-prev-btn');
+  const npPlayPauseBtn = document.getElementById('np-play-pause-btn');
+  const npNextBtn = document.getElementById('np-next-btn');
+  const npPlayIcon = document.getElementById('np-play-icon');
+  const npPauseIcon = document.getElementById('np-pause-icon');
+
   // === Init ===
   // Unregister any stale service worker that might be intercepting fetches
   // and serving an old build. Runs once per page load.
@@ -92,6 +109,7 @@
 
     bindTabs();
     bindTransport();
+    bindNowPlaying();
     bindAudioEvents();
 
     renderRoster();
@@ -320,6 +338,107 @@
     nextBtn.addEventListener('click', () => advanceBatter());
   }
 
+  // === Now Playing (fullscreen) ===
+  function bindNowPlaying() {
+    function togglePlayPause() {
+      if (!currentPlayer) return;
+      if (isPaused) resumePlayback();
+      else if (playbackPhase) pausePlayback();
+      else playPlayer(currentPlayer);
+    }
+
+    expandBtn.addEventListener('click', openNowPlaying);
+    // Tapping the mini-player text area also expands
+    document.getElementById('playback-info').addEventListener('click', (e) => {
+      // Don't expand when tapping the expand button itself (it already handles it)
+      if (e.target.closest('#expand-btn')) return;
+      if (currentPlayer) openNowPlaying();
+    });
+
+    collapseBtn.addEventListener('click', closeNowPlaying);
+
+    npPlayPauseBtn.addEventListener('click', togglePlayPause);
+    npPrevBtn.addEventListener('click', () => {
+      if (currentBatterIdx > 0) {
+        const p = roster.find(x => x.number === lineup[currentBatterIdx - 1]);
+        if (p) { currentBatterIdx -= 1; playPlayer(p); }
+      }
+    });
+    npNextBtn.addEventListener('click', () => advanceBatter());
+
+    // Esc closes the overlay
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !nowPlaying.classList.contains('hidden')) {
+        closeNowPlaying();
+      }
+    });
+  }
+
+  function openNowPlaying() {
+    nowPlaying.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    updateNowPlaying();
+  }
+  function closeNowPlaying() {
+    nowPlaying.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  function updateNowPlaying() {
+    if (!currentPlayer) {
+      npNumber.textContent = '';
+      npName.textContent = 'No player selected';
+      npSongName.classList.add('hidden');
+      npUpNext.innerHTML = '';
+      npProgressFill.style.width = '0%';
+      npTimeCurrent.textContent = '0:00';
+      npTimeTotal.textContent = '0:00';
+      npPrevBtn.disabled = true;
+      npNextBtn.disabled = true;
+      npPlayPauseBtn.disabled = true;
+      return;
+    }
+    npNumber.textContent = `#${currentPlayer.number}`;
+    npName.textContent = `${currentPlayer.firstName} ${currentPlayer.lastName}`;
+    if (currentPlayer.song) {
+      npSongName.textContent = currentPlayer.song;
+      npSongName.classList.remove('hidden');
+    } else {
+      npSongName.classList.add('hidden');
+    }
+
+    npPlayPauseBtn.disabled = false;
+    npPrevBtn.disabled = !(currentBatterIdx > 0);
+    npNextBtn.disabled = !(currentBatterIdx >= 0 && currentBatterIdx + 1 < lineup.length);
+
+    // Up Next / In The Hole — only meaningful when batting through a lineup
+    npUpNext.innerHTML = '';
+    if (currentBatterIdx >= 0) {
+      const onDeck = lineup[currentBatterIdx + 1];
+      const inTheHole = lineup[currentBatterIdx + 2];
+      if (onDeck != null) {
+        const p = roster.find(x => x.number === onDeck);
+        if (p) npUpNext.appendChild(makeUpNextRow('On Deck', p));
+      }
+      if (inTheHole != null) {
+        const p = roster.find(x => x.number === inTheHole);
+        if (p) npUpNext.appendChild(makeUpNextRow('In The Hole', p));
+      }
+    }
+  }
+
+  function makeUpNextRow(label, player) {
+    const row = document.createElement('div');
+    row.className = 'np-role-row';
+    row.innerHTML = `
+      <span class="np-role-label">${label}</span>
+      <span class="np-role-name">
+        <span class="np-role-num">#${player.number}</span>${escapeHtml(player.firstName)} ${escapeHtml(player.lastName)}
+      </span>
+    `;
+    return row;
+  }
+
   function bindAudioEvents() {
     announcementAudio.addEventListener('ended', onAnnouncementEnded);
     walkupAudio.addEventListener('ended', onWalkupEnded);
@@ -546,12 +665,16 @@
     timeTotal.textContent = formatTime(WALKUP_DURATION_S);
     renderLineup();
     renderRoster();
+    updateNowPlaying();
   }
 
   function setPlayPauseIcon(playing) {
     playIcon.style.display = playing ? 'none' : '';
     pauseIcon.style.display = playing ? '' : 'none';
     playPauseBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    npPlayIcon.style.display = playing ? 'none' : '';
+    npPauseIcon.style.display = playing ? '' : 'none';
+    npPlayPauseBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   }
 
   // === Progress loop (just walk-up phase) ===
@@ -562,11 +685,18 @@
         const elapsed = walkupAudio.currentTime;
         const pct = Math.min(100, (elapsed / WALKUP_DURATION_S) * 100);
         progressFill.style.width = `${pct}%`;
-        timeCurrent.textContent = formatTime(elapsed);
-        timeTotal.textContent = formatTime(WALKUP_DURATION_S);
+        npProgressFill.style.width = `${pct}%`;
+        const cur = formatTime(elapsed);
+        const tot = formatTime(WALKUP_DURATION_S);
+        timeCurrent.textContent = cur;
+        timeTotal.textContent = tot;
+        npTimeCurrent.textContent = cur;
+        npTimeTotal.textContent = tot;
       } else if (playbackPhase === 'announcement') {
         progressFill.style.width = '0%';
+        npProgressFill.style.width = '0%';
         timeCurrent.textContent = '0:00';
+        npTimeCurrent.textContent = '0:00';
       }
     }, 200);
   }
