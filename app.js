@@ -61,6 +61,7 @@
   const nowPlaying = document.getElementById('now-playing');
   const expandBtn = document.getElementById('expand-btn');
   const collapseBtn = document.getElementById('collapse-btn');
+  const npCurrentLabel = document.getElementById('np-current-label');
   const npNumber = document.getElementById('np-number');
   const npName = document.getElementById('np-name');
   const npSongName = document.getElementById('np-song-name');
@@ -111,6 +112,13 @@
     bindTransport();
     bindNowPlaying();
     bindAudioEvents();
+
+    // If we have a lineup, point at the leadoff batter so the bar shows
+    // "Up Next: batter 1" right away. Just tap Play to start the game.
+    if (lineup.length > 0) {
+      currentBatterIdx = 0;
+      showBarFromLineup();
+    }
 
     renderRoster();
     renderLineup();
@@ -282,8 +290,14 @@
         <span class="add-icon">+</span>
       `;
       btn.addEventListener('click', () => {
+        const wasEmpty = lineup.length === 0;
         lineup.push(p.number);
         saveLineup();
+        // First batter added: point at them so the bar shows them as "Up Next"
+        if (wasEmpty && currentBatterIdx < 0) {
+          currentBatterIdx = 0;
+          showBarFromLineup();
+        }
         renderLineup();
         renderAvailable();
       });
@@ -292,15 +306,24 @@
   }
 
   function removeFromLineup(idx) {
-    const removingNum = lineup[idx];
+    const wasPointer = idx === currentBatterIdx;
     lineup.splice(idx, 1);
-    if (currentPlayer && currentPlayer.number === removingNum) {
+
+    if (lineup.length === 0) {
       stopAll();
       currentPlayer = null;
       currentBatterIdx = -1;
-    } else if (currentPlayer) {
-      currentBatterIdx = lineup.indexOf(currentPlayer.number);
+    } else if (wasPointer) {
+      // Removed the batter we were pointing at; stop and stay at the same
+      // index (which is now the next batter, or wrap to 0).
+      if (playbackPhase || isPaused) stopAll();
+      if (currentBatterIdx >= lineup.length) currentBatterIdx = 0;
+      showBarFromLineup();
+    } else if (currentBatterIdx > idx) {
+      // Removed someone earlier in the order; shift our pointer left.
+      currentBatterIdx -= 1;
     }
+
     saveLineup();
     renderLineup();
     renderAvailable();
@@ -323,34 +346,59 @@
   }
 
   // === Playback ===
+  // The play button is the only thing that actually starts audio. Prev/Next
+  // just stop and move the pointer; the bar then shows the new batter as
+  // "Up Next" until the user taps Play. After a song ends, the pointer
+  // auto-advances to the next batter — same idea: tap Play to send them up.
   function bindTransport() {
-    playPauseBtn.addEventListener('click', () => {
-      if (!currentPlayer) return;
-      if (isPaused) resumePlayback();
-      else if (playbackPhase) pausePlayback();
-      else playPlayer(currentPlayer); // restart
-    });
-    prevBtn.addEventListener('click', () => goToPrevBatter());
-    nextBtn.addEventListener('click', () => advanceBatter());
+    playPauseBtn.addEventListener('click', onPlayPauseClicked);
+    prevBtn.addEventListener('click', () => navigateBatter(-1));
+    nextBtn.addEventListener('click', () => navigateBatter(1));
   }
 
-  // Move to the previous batter, wrapping from the top of the order to the bottom.
-  function goToPrevBatter() {
-    if (currentBatterIdx < 0 || lineup.length === 0) return;
-    currentBatterIdx = (currentBatterIdx - 1 + lineup.length) % lineup.length;
-    const p = roster.find(x => x.number === lineup[currentBatterIdx]);
-    if (p) playPlayer(p);
+  function onPlayPauseClicked() {
+    // Idle state with a lineup pointer set: play that batter
+    if (!currentPlayer && currentBatterIdx >= 0 && lineup.length > 0) {
+      const p = roster.find(x => x.number === lineup[currentBatterIdx]);
+      if (p) { playPlayer(p); return; }
+    }
+    if (!currentPlayer) return;
+    if (isPaused) resumePlayback();
+    else if (playbackPhase) pausePlayback();
+    else playPlayer(currentPlayer);  // restart
+  }
+
+  // Stop any current playback and move the lineup pointer by `delta`,
+  // wrapping at both ends. Does NOT start playing — the bar shows the
+  // new batter as "Up Next" and waits for the user to press Play.
+  function navigateBatter(delta) {
+    if (lineup.length === 0) return;
+    if (playbackPhase || isPaused) stopAll();
+    if (currentBatterIdx < 0) currentBatterIdx = 0;
+    currentBatterIdx = (currentBatterIdx + delta + lineup.length) % lineup.length;
+    showBarFromLineup();
+  }
+
+  // Sync the playback bar (and Now Playing) with whoever the lineup pointer
+  // points at, without starting playback. Called after navigate, after a
+  // song ends, and on initial load.
+  function showBarFromLineup() {
+    if (currentBatterIdx < 0 || lineup.length === 0) {
+      currentPlayer = null;
+    } else {
+      const num = lineup[currentBatterIdx];
+      currentPlayer = roster.find(p => p.number === num) || null;
+    }
+    progressFill.style.width = '0%';
+    npProgressFill.style.width = '0%';
+    timeCurrent.textContent = '0:00';
+    npTimeCurrent.textContent = '0:00';
+    setPlayPauseIcon(false);
+    updatePlaybackBar();
   }
 
   // === Now Playing (fullscreen) ===
   function bindNowPlaying() {
-    function togglePlayPause() {
-      if (!currentPlayer) return;
-      if (isPaused) resumePlayback();
-      else if (playbackPhase) pausePlayback();
-      else playPlayer(currentPlayer);
-    }
-
     expandBtn.addEventListener('click', openNowPlaying);
     // Tapping the mini-player text area also expands
     document.getElementById('playback-info').addEventListener('click', (e) => {
@@ -361,9 +409,9 @@
 
     collapseBtn.addEventListener('click', closeNowPlaying);
 
-    npPlayPauseBtn.addEventListener('click', togglePlayPause);
-    npPrevBtn.addEventListener('click', () => goToPrevBatter());
-    npNextBtn.addEventListener('click', () => advanceBatter());
+    npPlayPauseBtn.addEventListener('click', onPlayPauseClicked);
+    npPrevBtn.addEventListener('click', () => navigateBatter(-1));
+    npNextBtn.addEventListener('click', () => navigateBatter(1));
 
     // Esc closes the overlay
     document.addEventListener('keydown', (e) => {
@@ -397,6 +445,9 @@
       npPlayPauseBtn.disabled = true;
       return;
     }
+    // Label flips between "Now Batting" (playing) and "Up Next" (idle).
+    npCurrentLabel.textContent = playbackPhase ? 'Now Batting' : 'Up Next';
+
     npNumber.textContent = `#${currentPlayer.number}`;
     npName.textContent = `${currentPlayer.firstName} ${currentPlayer.lastName}`;
     if (currentPlayer.song) {
@@ -568,28 +619,27 @@
     }
   }
 
+  // Walk-up has finished playing. Reset the playback flags, then auto-advance
+  // the lineup pointer so the bar shows the NEXT batter as "Up Next" — but
+  // don't start playing. The user just taps Play again to send them up.
   function onWalkupEnded() {
     playbackPhase = null;
+    isPaused = false;
     setPlayPauseIcon(false);
     releaseWakeLock();
     stopProgressLoop();
     progressFill.style.width = '0%';
+    npProgressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
-    timeTotal.textContent = formatTime(effectiveWalkupTotal());
-    renderLineup();
-    renderRoster();
-  }
-
-  function advanceBatter() {
-    stopAll();
-    if (currentBatterIdx < 0 || lineup.length === 0) {
-      onWalkupEnded();
-      return;
+    npTimeCurrent.textContent = '0:00';
+    if (currentBatterIdx >= 0 && lineup.length > 0) {
+      currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
+      showBarFromLineup();
+    } else {
+      // Roster preview: nothing queued up, just clear.
+      currentPlayer = null;
+      updatePlaybackBar();
     }
-    // Batting order wraps: after the last batter, the top of the order bats again.
-    currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
-    const p = roster.find(x => x.number === lineup[currentBatterIdx]);
-    if (p) playPlayer(p);
   }
 
   function pausePlayback() {
@@ -681,9 +731,14 @@
     } else {
       playbackSongName.classList.add('hidden');
     }
-    playbackStatus.textContent = currentBatterIdx >= 0
-      ? `Batting ${currentBatterIdx + 1} of ${lineup.length}`
-      : 'Preview';
+    if (currentBatterIdx >= 0) {
+      // Lineup mode: status reflects whether we're actively playing or ready
+      playbackStatus.textContent = playbackPhase
+        ? `Now Batting · ${currentBatterIdx + 1} of ${lineup.length}`
+        : `Up Next · ${currentBatterIdx + 1} of ${lineup.length}`;
+    } else {
+      playbackStatus.textContent = 'Preview';
+    }
     playPauseBtn.disabled = false;
     const canCycle = currentBatterIdx >= 0 && lineup.length > 1;
     prevBtn.disabled = !canCycle;
