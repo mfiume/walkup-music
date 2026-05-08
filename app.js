@@ -532,15 +532,40 @@
     armWalkupFadeOut();
   }
 
+  // The play-through length is the lesser of WALKUP_DURATION_S and the audio
+  // file's natural duration. For ~10s clips, total = ~10s; for longer songs we
+  // cap at WALKUP_DURATION_S and fade out before the song ends.
+  function effectiveWalkupTotal() {
+    const d = walkupAudio.duration;
+    if (isFinite(d) && d > 0) return Math.min(d, WALKUP_DURATION_S);
+    return WALKUP_DURATION_S;
+  }
+
   function armWalkupFadeOut() {
     clearTimeout(walkupFadeTimeout);
-    const fadeStartMs = Math.max(0, (WALKUP_DURATION_S - FADE_OUT_S) * 1000);
-    walkupFadeTimeout = setTimeout(() => {
-      fade(walkupAudio, walkupAudio.volume, 0, FADE_OUT_S * 1000, () => {
-        walkupAudio.pause();
-        onWalkupEnded();
-      });
-    }, fadeStartMs);
+    const arm = () => {
+      clearTimeout(walkupFadeTimeout);
+      const total = effectiveWalkupTotal();
+      // Only schedule a fade-out if the song is longer than our cap. For short
+      // clips (≤ cap), let them play to their natural end via the 'ended' event.
+      if (!isFinite(walkupAudio.duration) || walkupAudio.duration > WALKUP_DURATION_S) {
+        const fadeStartMs = Math.max(0, (total - FADE_OUT_S) * 1000);
+        walkupFadeTimeout = setTimeout(() => {
+          fade(walkupAudio, walkupAudio.volume, 0, FADE_OUT_S * 1000, () => {
+            walkupAudio.pause();
+            onWalkupEnded();
+          });
+        }, fadeStartMs);
+      }
+      // Refresh the displayed total now that we know the real duration
+      updatePlaybackBar();
+    };
+    if (isFinite(walkupAudio.duration) && walkupAudio.duration > 0) {
+      arm();
+    } else {
+      // Duration not loaded yet; arm once metadata arrives
+      walkupAudio.addEventListener('loadedmetadata', arm, { once: true });
+    }
   }
 
   function onWalkupEnded() {
@@ -550,7 +575,7 @@
     stopProgressLoop();
     progressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
-    timeTotal.textContent = formatTime(WALKUP_DURATION_S);
+    timeTotal.textContent = formatTime(effectiveWalkupTotal());
     renderLineup();
     renderRoster();
   }
@@ -663,7 +688,7 @@
     const canCycle = currentBatterIdx >= 0 && lineup.length > 1;
     prevBtn.disabled = !canCycle;
     nextBtn.disabled = !canCycle;
-    timeTotal.textContent = formatTime(WALKUP_DURATION_S);
+    timeTotal.textContent = formatTime(effectiveWalkupTotal());
     renderLineup();
     renderRoster();
     updateNowPlaying();
@@ -683,12 +708,13 @@
     stopProgressLoop();
     progressInterval = setInterval(() => {
       if (playbackPhase === 'walkup' && !walkupAudio.paused) {
+        const total = effectiveWalkupTotal();
         const elapsed = walkupAudio.currentTime;
-        const pct = Math.min(100, (elapsed / WALKUP_DURATION_S) * 100);
+        const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
         progressFill.style.width = `${pct}%`;
         npProgressFill.style.width = `${pct}%`;
         const cur = formatTime(elapsed);
-        const tot = formatTime(WALKUP_DURATION_S);
+        const tot = formatTime(total);
         timeCurrent.textContent = cur;
         timeTotal.textContent = tot;
         npTimeCurrent.textContent = cur;
