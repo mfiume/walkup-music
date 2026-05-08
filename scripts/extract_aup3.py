@@ -55,8 +55,8 @@ def find_id(names: dict, name: str) -> int:
 
 
 def scan_doc(doc: bytes, ids: dict):
-    """Linear scan: find each wavetrack StartTag, its name, and its block ids.
-    Returns list of {"name", "blocks"} dicts and the project sample rate."""
+    """Linear scan: find each wavetrack StartTag, its name, rate, and block ids.
+    Returns list of {"name", "rate", "blocks"} dicts and the project sample rate."""
     wt_id = ids["wavetrack"]      # 21
     name_id = ids["name"]          # 22
     blockid_id = ids["blockid"]    # 48
@@ -68,11 +68,11 @@ def scan_doc(doc: bytes, ids: dict):
     blk_sig = bytes([0x07]) + struct.pack("<H", blockid_id)        # 07 30 00
     rate_sig = bytes([0x0A]) + struct.pack("<H", rate_id)          # 0A 04 00
 
-    # Sample rate (project root attribute)
-    sample_rate = 44100
-    p = doc.find(rate_sig)
-    if p >= 0:
-        sample_rate = int(struct.unpack_from("<d", doc, p + 3)[0])
+    # Project-level sample rate (first rate attribute, before any wavetrack)
+    project_rate = 44100
+    first_rate = doc.find(rate_sig)
+    if first_rate >= 0:
+        project_rate = int(struct.unpack_from("<d", doc, first_rate + 3)[0])
 
     # All wavetrack starts
     wt_starts = []
@@ -88,12 +88,19 @@ def scan_doc(doc: bytes, ids: dict):
     for i, start in enumerate(wt_starts):
         end = wt_starts[i + 1] if i + 1 < len(wt_starts) else len(doc)
 
-        # Name = first occurrence of name_sig immediately after StartTag (within this segment)
+        # Name = first occurrence of name_sig within this segment
         track_name = ""
         n = doc.find(name_sig, start, end)
         if n >= 0:
             blen = struct.unpack_from("<I", doc, n + 3)[0]
             track_name = doc[n + 7 : n + 7 + blen].decode("utf-16-le", errors="replace")
+
+        # Per-track rate. Each wavetrack has its own `rate` (Double) attribute.
+        # Fall back to the project rate if not present.
+        track_rate = project_rate
+        r = doc.find(rate_sig, start, end)
+        if r >= 0:
+            track_rate = int(struct.unpack_from("<d", doc, r + 3)[0])
 
         # Block IDs in this segment (in document order)
         block_ids = []
@@ -106,9 +113,9 @@ def scan_doc(doc: bytes, ids: dict):
             block_ids.append(bid)
             q += 11
 
-        tracks.append({"name": track_name, "blocks": block_ids})
+        tracks.append({"name": track_name, "rate": track_rate, "blocks": block_ids})
 
-    return tracks, sample_rate
+    return tracks, project_rate
 
 
 def extract_track(db: sqlite3.Connection, blockids: list, sample_rate: int, out_path: str):
@@ -162,14 +169,13 @@ def process_aup3(aup3_path: str):
     names = parse_dict(dict_blob)
 
     ids = {n: find_id(names, n) for n in ("wavetrack", "name", "blockid", "rate")}
-    tracks, sample_rate = scan_doc(doc_blob, ids)
+    tracks, project_rate = scan_doc(doc_blob, ids)
 
-    print(f"  sample rate: {sample_rate}")
-    print(f"  wavetracks:  {len(tracks)}")
+    print(f"  project rate: {project_rate}")
+    print(f"  wavetracks:   {len(tracks)}")
 
-    track_summary = []
     for t in tracks:
-        # Estimate duration by reading sample counts
+        # Estimate duration using this track's own sample rate
         total_samples = 0
         for bid in t["blocks"]:
             row = db.execute(
@@ -177,8 +183,8 @@ def process_aup3(aup3_path: str):
             ).fetchone()
             if row:
                 total_samples += row[0] // 4
-        t["duration"] = total_samples / sample_rate if sample_rate else 0
-        print(f"    {t['name']!r}: blocks={t['blocks']}  ~{t['duration']:.2f}s")
+        t["duration"] = total_samples / t["rate"] if t["rate"] else 0
+        print(f"    {t['name']!r}: rate={t['rate']}  blocks={t['blocks']}  ~{t['duration']:.2f}s")
 
     if len(tracks) < 2:
         print("  ! fewer than 2 tracks, skipping")
@@ -189,11 +195,11 @@ def process_aup3(aup3_path: str):
     tracks_sorted = sorted(tracks, key=lambda t: t["duration"])
     ann = tracks_sorted[0]
     music = tracks_sorted[-1]
-    print(f"  → announcement: {ann['name']!r}, music: {music['name']!r}")
+    print(f"  → announcement: {ann['name']!r} @ {ann['rate']}Hz, music: {music['name']!r} @ {music['rate']}Hz")
 
-    extract_track(db, ann["blocks"], sample_rate, os.path.join(ANN_OUT, f"{slug}.wav"))
+    extract_track(db, ann["blocks"], ann["rate"], os.path.join(ANN_OUT, f"{slug}.wav"))
     print(f"  ✓ announcement → {os.path.join(ANN_OUT, slug + '.wav')}")
-    extract_track(db, music["blocks"], sample_rate, os.path.join(MUSIC_OUT, f"{slug}.wav"))
+    extract_track(db, music["blocks"], music["rate"], os.path.join(MUSIC_OUT, f"{slug}.wav"))
     print(f"  ✓ music        → {os.path.join(MUSIC_OUT, slug + '.wav')}")
     db.close()
 
