@@ -432,7 +432,7 @@ h3 {
 /* === Layout tweaks for wider screens === */
 @media (min-width: 720px) {
   #playback-main {
-    grid-template-columns: minmax(0, 2fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
       "info transport timer"
       "progress progress progress";
@@ -440,7 +440,10 @@ h3 {
     gap: 14px 24px;
   }
   #playback-info { grid-area: info; }
-  #transport { grid-area: transport; }
+  #transport {
+    grid-area: transport;
+    justify-self: center;  /* center the transport within its own column */
+  }
   #playback-timer { grid-area: timer; text-align: right; }
   #progress-bar { grid-area: progress; }
 }
