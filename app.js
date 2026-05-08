@@ -58,7 +58,25 @@
   const walkupAudio = document.getElementById('walkup-audio');
 
   // === Init ===
+  // Unregister any stale service worker that might be intercepting fetches
+  // and serving an old build. Runs once per page load.
+  async function clearServiceWorkers() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) await r.unregister();
+      if (regs.length) console.log('Unregistered', regs.length, 'service worker(s)');
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+        if (keys.length) console.log('Cleared', keys.length, 'cache(s)');
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   async function init() {
+    await clearServiceWorkers();
+
     const resp = await fetch('roster.json');
     roster = await resp.json();
     roster.sort((a, b) => a.number - b.number);
@@ -87,13 +105,23 @@
   }
 
   // === Tabs ===
+  function applyTabState() {
+    // Belt-and-suspenders: set display directly so a stale stylesheet can't
+    // leave inactive views visible.
+    views.forEach(v => {
+      v.style.display = v.classList.contains('active') ? 'block' : 'none';
+    });
+  }
+
   function bindTabs() {
+    applyTabState(); // initial
     tabs.forEach(t => {
       t.addEventListener('click', () => {
         tabs.forEach(x => x.classList.remove('active'));
         views.forEach(v => v.classList.remove('active'));
         t.classList.add('active');
         document.getElementById(`${t.dataset.tab}-view`).classList.add('active');
+        applyTabState();
       });
     });
   }
