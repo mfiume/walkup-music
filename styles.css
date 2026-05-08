@@ -8,17 +8,22 @@
 }
 
 :root {
-  --bg: #010205;
-  --bg-2: #0b0f1a;
-  --panel: #11151f;
-  --panel-2: #161c2a;
-  --border: #1f2636;
-  --text: #f4f6fb;
-  --muted: #8a93a6;
-  --accent: #ff7a1a;
-  --accent-soft: rgba(255, 122, 26, 0.18);
+  /* Bloordale Bombers — green + yellow */
+  --bg: #06120c;                     /* near-black with a green tint */
+  --bg-2: #0a1c14;
+  --panel: #0e2418;
+  --panel-2: #133022;
+  --border: #1f3d2c;
+  --text: #f7f3e2;                   /* warm cream */
+  --muted: #8aa195;
+  --accent: #f5c518;                 /* gold */
+  --accent-rgb: 245, 197, 24;
+  --accent-soft: rgba(245, 197, 24, 0.18);
+  --green: #1f6b34;                  /* logo green */
+  --green-bright: #2f8a47;
+  --green-rgb: 31, 107, 52;
   --danger: #ef5350;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 }
 
 html, body {
@@ -54,18 +59,21 @@ header {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: linear-gradient(180deg, var(--bg) 0%, rgba(1, 2, 5, 0.85) 100%);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, var(--green) 0%, #174d26 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   padding: env(safe-area-inset-top) 0 0 0;
 }
 header h1 {
   font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   text-align: center;
   padding: 14px 16px 8px;
-  color: var(--text);
+  color: var(--accent);  /* yellow team text on green band */
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 nav {
   display: flex;
@@ -80,15 +88,16 @@ nav {
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.9rem;
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--border);
+  color: rgba(247, 243, 226, 0.75);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(0, 0, 0, 0.25);
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .tab.active {
-  background: var(--accent-soft);
-  color: var(--text);
-  border-color: rgba(255, 122, 26, 0.5);
+  background: var(--accent);
+  color: var(--green);
+  border-color: var(--accent);
+  font-weight: 700;
 }
 
 /* === Main / Views === */
@@ -161,9 +170,9 @@ h3 {
 }
 .lineup-row:hover { background: var(--panel-2); }
 .lineup-row.active {
-  border-color: rgba(255, 122, 26, 0.6);
-  background: linear-gradient(180deg, rgba(255, 122, 26, 0.12), rgba(255, 122, 26, 0.04));
-  box-shadow: 0 0 0 1px rgba(255, 122, 26, 0.2) inset;
+  border-color: rgba(var(--accent-rgb), 0.6);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(var(--accent-rgb), 0.04));
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2) inset;
 }
 .lineup-row.dragging { opacity: 0.5; transform: scale(0.98); }
 
@@ -233,7 +242,7 @@ h3 {
   text-align: left;
   width: 100%;
 }
-.available-row:hover { background: var(--panel-2); border-color: rgba(255, 122, 26, 0.4); }
+.available-row:hover { background: var(--panel-2); border-color: rgba(var(--accent-rgb), 0.4); }
 .add-icon {
   font-size: 1.5rem;
   color: var(--accent);
@@ -261,10 +270,10 @@ h3 {
   width: 100%;
   transition: background 0.15s, border-color 0.15s;
 }
-.roster-card:hover { background: var(--panel-2); border-color: rgba(255, 122, 26, 0.4); }
+.roster-card:hover { background: var(--panel-2); border-color: rgba(var(--accent-rgb), 0.4); }
 .roster-card.active {
-  border-color: rgba(255, 122, 26, 0.6);
-  background: linear-gradient(180deg, rgba(255, 122, 26, 0.12), rgba(255, 122, 26, 0.04));
+  border-color: rgba(var(--accent-rgb), 0.6);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(var(--accent-rgb), 0.04));
 }
 .roster-num {
   font-weight: 800;
@@ -300,9 +309,10 @@ h3 {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(11, 15, 26, 0.92);
+  background:
+    linear-gradient(180deg, rgba(31, 107, 52, 0.18) 0%, rgba(10, 28, 20, 0.95) 60%);
   backdrop-filter: blur(14px);
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
   box-shadow: var(--shadow);
   padding: 10px 14px calc(14px + env(safe-area-inset-bottom));
   z-index: 10;
@@ -371,11 +381,11 @@ h3 {
   width: 56px;
   height: 56px;
   background: var(--accent);
-  color: #fff;
+  color: var(--green);  /* gold button, green icon — matches the logo */
   border-color: transparent;
-  box-shadow: 0 8px 18px rgba(255, 122, 26, 0.35);
+  box-shadow: 0 8px 18px rgba(var(--accent-rgb), 0.35);
 }
-.transport-btn.primary:not(:disabled):hover { background: #ff8a35; }
+.transport-btn.primary:not(:disabled):hover { background: #ffd246; }
 
 #progress-bar {
   height: 4px;
