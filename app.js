@@ -326,16 +326,16 @@
       else if (playbackPhase) pausePlayback();
       else playPlayer(currentPlayer); // restart
     });
-    prevBtn.addEventListener('click', () => {
-      if (currentBatterIdx > 0) {
-        const p = roster.find(x => x.number === lineup[currentBatterIdx - 1]);
-        if (p) {
-          currentBatterIdx -= 1;
-          playPlayer(p);
-        }
-      }
-    });
+    prevBtn.addEventListener('click', () => goToPrevBatter());
     nextBtn.addEventListener('click', () => advanceBatter());
+  }
+
+  // Move to the previous batter, wrapping from the top of the order to the bottom.
+  function goToPrevBatter() {
+    if (currentBatterIdx < 0 || lineup.length === 0) return;
+    currentBatterIdx = (currentBatterIdx - 1 + lineup.length) % lineup.length;
+    const p = roster.find(x => x.number === lineup[currentBatterIdx]);
+    if (p) playPlayer(p);
   }
 
   // === Now Playing (fullscreen) ===
@@ -358,12 +358,7 @@
     collapseBtn.addEventListener('click', closeNowPlaying);
 
     npPlayPauseBtn.addEventListener('click', togglePlayPause);
-    npPrevBtn.addEventListener('click', () => {
-      if (currentBatterIdx > 0) {
-        const p = roster.find(x => x.number === lineup[currentBatterIdx - 1]);
-        if (p) { currentBatterIdx -= 1; playPlayer(p); }
-      }
-    });
+    npPrevBtn.addEventListener('click', () => goToPrevBatter());
     npNextBtn.addEventListener('click', () => advanceBatter());
 
     // Esc closes the overlay
@@ -408,20 +403,27 @@
     }
 
     npPlayPauseBtn.disabled = false;
-    npPrevBtn.disabled = !(currentBatterIdx > 0);
-    npNextBtn.disabled = !(currentBatterIdx >= 0 && currentBatterIdx + 1 < lineup.length);
+    // Order wraps, so prev/next are usable whenever there's more than one batter.
+    const canCycle = currentBatterIdx >= 0 && lineup.length > 1;
+    npPrevBtn.disabled = !canCycle;
+    npNextBtn.disabled = !canCycle;
 
     // Up Next / In The Hole — only meaningful when batting through a lineup
     npUpNext.innerHTML = '';
-    if (currentBatterIdx >= 0) {
-      const onDeck = lineup[currentBatterIdx + 1];
-      const inTheHole = lineup[currentBatterIdx + 2];
-      if (onDeck != null) {
-        const p = roster.find(x => x.number === onDeck);
+    if (currentBatterIdx >= 0 && lineup.length > 0) {
+      // Order wraps: after the last batter, the top of the order is on deck.
+      const onDeckNum = lineup.length > 1
+        ? lineup[(currentBatterIdx + 1) % lineup.length]
+        : null;
+      const inTheHoleNum = lineup.length > 2
+        ? lineup[(currentBatterIdx + 2) % lineup.length]
+        : null;
+      if (onDeckNum != null) {
+        const p = roster.find(x => x.number === onDeckNum);
         if (p) npUpNext.appendChild(makeUpNextRow('On Deck', p));
       }
-      if (inTheHole != null) {
-        const p = roster.find(x => x.number === inTheHole);
+      if (inTheHoleNum != null) {
+        const p = roster.find(x => x.number === inTheHoleNum);
         if (p) npUpNext.appendChild(makeUpNextRow('In The Hole', p));
       }
     }
@@ -551,18 +553,12 @@
 
   function advanceBatter() {
     stopAll();
-    if (currentBatterIdx < 0) {
+    if (currentBatterIdx < 0 || lineup.length === 0) {
       onWalkupEnded();
       return;
     }
-    if (currentBatterIdx + 1 >= lineup.length) {
-      currentPlayer = null;
-      currentBatterIdx = -1;
-      updatePlaybackBar();
-      onWalkupEnded();
-      return;
-    }
-    currentBatterIdx += 1;
+    // Batting order wraps: after the last batter, the top of the order bats again.
+    currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
     const p = roster.find(x => x.number === lineup[currentBatterIdx]);
     if (p) playPlayer(p);
   }
@@ -660,8 +656,9 @@
       ? `Batting ${currentBatterIdx + 1} of ${lineup.length}`
       : 'Preview';
     playPauseBtn.disabled = false;
-    prevBtn.disabled = !(currentBatterIdx > 0);
-    nextBtn.disabled = !(currentBatterIdx >= 0 && currentBatterIdx + 1 < lineup.length);
+    const canCycle = currentBatterIdx >= 0 && lineup.length > 1;
+    prevBtn.disabled = !canCycle;
+    nextBtn.disabled = !canCycle;
     timeTotal.textContent = formatTime(WALKUP_DURATION_S);
     renderLineup();
     renderRoster();
