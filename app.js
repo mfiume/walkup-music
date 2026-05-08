@@ -17,7 +17,6 @@
   const MUSIC_DUCKED_VOL = 0.35;    // music volume while announcement still playing
   const MUSIC_FULL_VOL = 1.0;
   const MUSIC_RAMP_S = 0.9;         // ramp from ducked → full once announcement ends
-  const ANNOUNCEMENT_FADE_S = 0.6;  // soft fade-out at the very tail of the announcement
 
   // === State ===
   let roster = [];
@@ -355,10 +354,10 @@
     if (playbackPhase !== 'announcement') return;
     if (!walkupAudio.src) return;
 
+    // Music starts ducked under the tail of the announcement. Announcement
+    // continues at full volume until its file ends; no soft fade.
     walkupAudio.volume = MUSIC_DUCKED_VOL;
     walkupAudio.play().catch(() => {});
-
-    fade(announcementAudio, announcementAudio.volume, 0, ANNOUNCEMENT_FADE_S * 1000);
   }
 
   function onAnnouncementEnded() {
