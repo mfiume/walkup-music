@@ -592,6 +592,40 @@
     return WALKUP_DURATION_S;
   }
 
+  // Length of the announcement, or 0 if none / not loaded yet.
+  function announcementTotal() {
+    if (!currentPlayer || !currentPlayer.announcement) return 0;
+    const d = announcementAudio.duration;
+    return isFinite(d) && d > 0 ? d : 0;
+  }
+
+  // Combined at-bat duration: announcement + music, minus the 1.2s overlap
+  // where the music ducks in under the tail of the announcement.
+  function effectiveAtBatTotal() {
+    const ann = announcementTotal();
+    const walkup = effectiveWalkupTotal();
+    if (ann <= 0) return walkup;
+    return ann + walkup - OVERLAP_S;
+  }
+
+  // Where we are in the combined at-bat timeline. Continuous across the
+  // announcement → music transition.
+  function atBatElapsed() {
+    if (playbackPhase === 'announcement') {
+      return announcementAudio.currentTime;
+    }
+    if (playbackPhase === 'walkup') {
+      const ann = announcementTotal();
+      // Once we're in the walkup phase, walkupAudio.currentTime starts ~OVERLAP_S
+      // (since music began that far before the announcement ended). Subtracting
+      // OVERLAP_S gives a smooth handoff from the announcement clock.
+      return ann > 0
+        ? ann + walkupAudio.currentTime - OVERLAP_S
+        : walkupAudio.currentTime;
+    }
+    return 0;
+  }
+
   function armWalkupFadeOut() {
     clearTimeout(walkupFadeTimeout);
     const arm = () => {
@@ -743,7 +777,7 @@
     const canCycle = currentBatterIdx >= 0 && lineup.length > 1;
     prevBtn.disabled = !canCycle;
     nextBtn.disabled = !canCycle;
-    timeTotal.textContent = formatTime(effectiveWalkupTotal());
+    timeTotal.textContent = formatTime(effectiveAtBatTotal());
     renderLineup();
     renderRoster();
     updateNowPlaying();
@@ -758,28 +792,30 @@
     npPlayPauseBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   }
 
-  // === Progress loop (just walk-up phase) ===
+  // === Progress loop ===
+  // The bar runs the whole at-bat: announcement (ticking up from 0) → music
+  // (continuing without a jump). It only pauses if both audio elements are
+  // paused (announcement may be done while we're in walkup phase).
   function startProgressLoop() {
     stopProgressLoop();
     progressInterval = setInterval(() => {
-      if (playbackPhase === 'walkup' && !walkupAudio.paused) {
-        const total = effectiveWalkupTotal();
-        const elapsed = walkupAudio.currentTime;
-        const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
-        progressFill.style.width = `${pct}%`;
-        npProgressFill.style.width = `${pct}%`;
-        const cur = formatTime(elapsed);
-        const tot = formatTime(total);
-        timeCurrent.textContent = cur;
-        timeTotal.textContent = tot;
-        npTimeCurrent.textContent = cur;
-        npTimeTotal.textContent = tot;
-      } else if (playbackPhase === 'announcement') {
-        progressFill.style.width = '0%';
-        npProgressFill.style.width = '0%';
-        timeCurrent.textContent = '0:00';
-        npTimeCurrent.textContent = '0:00';
-      }
+      if (!playbackPhase) return;
+      const isPlaying =
+        (playbackPhase === 'announcement' && !announcementAudio.paused) ||
+        (playbackPhase === 'walkup' && !walkupAudio.paused);
+      if (!isPlaying) return;
+
+      const total = effectiveAtBatTotal();
+      const elapsed = atBatElapsed();
+      const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
+      progressFill.style.width = `${pct}%`;
+      npProgressFill.style.width = `${pct}%`;
+      const cur = formatTime(elapsed);
+      const tot = formatTime(total);
+      timeCurrent.textContent = cur;
+      timeTotal.textContent = tot;
+      npTimeCurrent.textContent = cur;
+      npTimeTotal.textContent = tot;
     }, 200);
   }
   function stopProgressLoop() {
