@@ -189,7 +189,9 @@
           <span class="roster-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
           <span class="roster-song">${escapeHtml(p.song || '')}</span>
         </span>
-        <svg class="roster-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        <span class="roster-play" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        </span>
       `;
       card.addEventListener('click', () => {
         // Preview from roster: don't lock to a lineup index
