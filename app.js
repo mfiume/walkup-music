@@ -151,26 +151,56 @@
   // === Tabs ===
   function applyTabState() {
     // Belt-and-suspenders: set display directly so a stale stylesheet can't
-    // leave inactive views visible.
+    // leave inactive views visible. For the *active* view we leave display
+    // to the stylesheet so it can use flex/grid (the roster view's gap
+    // depends on display: flex).
     views.forEach(v => {
-      v.style.display = v.classList.contains('active') ? 'block' : 'none';
+      v.style.display = v.classList.contains('active') ? '' : 'none';
     });
   }
 
+  function activateTab(tabName, opts = {}) {
+    const { pushUrl = true } = opts;
+    const target = Array.from(tabs).find(t => t.dataset.tab === tabName);
+    if (!target) return;
+
+    tabs.forEach(x => {
+      x.classList.remove('active');
+      x.setAttribute('aria-selected', 'false');
+    });
+    views.forEach(v => v.classList.remove('active'));
+    target.classList.add('active');
+    target.setAttribute('aria-selected', 'true');
+    document.getElementById(`${tabName}-view`).classList.add('active');
+    applyTabState();
+
+    if (pushUrl) {
+      // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,
+      // but a local file:// or root deploy gets clean /lineup paths too.
+      const base = location.pathname.replace(/\/(lineup|roster)\/?$/, '');
+      const next = base.replace(/\/$/, '') + '/' + tabName;
+      try {
+        history.pushState({ tab: tabName }, '', next);
+      } catch (_) { /* ignore history errors (e.g., file://) */ }
+    }
+  }
+
+  function tabFromUrl() {
+    const m = location.pathname.match(/\/(lineup|roster)\/?$/);
+    return m ? m[1] : 'lineup';
+  }
+
   function bindTabs() {
-    applyTabState(); // initial
+    // Initial state from URL (default lineup)
+    activateTab(tabFromUrl(), { pushUrl: false });
+
     tabs.forEach(t => {
-      t.addEventListener('click', () => {
-        tabs.forEach(x => {
-          x.classList.remove('active');
-          x.setAttribute('aria-selected', 'false');
-        });
-        views.forEach(v => v.classList.remove('active'));
-        t.classList.add('active');
-        t.setAttribute('aria-selected', 'true');
-        document.getElementById(`${t.dataset.tab}-view`).classList.add('active');
-        applyTabState();
-      });
+      t.addEventListener('click', () => activateTab(t.dataset.tab));
+    });
+
+    // Back/forward buttons
+    window.addEventListener('popstate', () => {
+      activateTab(tabFromUrl(), { pushUrl: false });
     });
   }
 

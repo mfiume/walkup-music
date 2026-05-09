@@ -8,12 +8,23 @@ PORT = 8765
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+SPA_ROUTES = {"/lineup", "/roster"}
+
+
 class NoCacheHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         super().end_headers()
+
+    def do_GET(self):
+        # Map SPA routes to index.html so direct hits / reloads work.
+        # Strip query/fragment for the routing match.
+        path = self.path.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+        if path in SPA_ROUTES:
+            self.path = "/index.html"
+        return super().do_GET()
 
     def log_message(self, fmt, *args):
         # Quieter logs
