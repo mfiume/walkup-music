@@ -41,6 +41,7 @@
   const clearLineupBtn = document.getElementById('clear-lineup-btn');
   const rosterView = document.getElementById('roster-view');
 
+  const playbackBar = document.getElementById('playback-bar');
   const playbackNumber = document.getElementById('playback-number');
   const playbackName = document.getElementById('playback-name');
   const playbackSongName = document.getElementById('playback-song-name');
@@ -124,6 +125,23 @@
     renderLineup();
     renderAvailable();
     updatePlaybackBar();
+
+    // Reserve scroll space matching the actual playback-bar height so the
+    // last list item is never covered. Re-measure on resize and after any
+    // updates that might change the bar layout.
+    measurePlaybackBar();
+    window.addEventListener('resize', measurePlaybackBar);
+    if (window.ResizeObserver) {
+      new ResizeObserver(measurePlaybackBar).observe(playbackBar);
+    }
+  }
+
+  function measurePlaybackBar() {
+    if (!playbackBar) return;
+    const h = playbackBar.getBoundingClientRect().height;
+    if (h > 0) {
+      document.body.style.setProperty('--playback-bar-h', `${Math.ceil(h)}px`);
+    }
   }
 
   function saveLineup() {
