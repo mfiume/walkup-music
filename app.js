@@ -136,23 +136,6 @@
     renderLineup();
     renderAvailable();
     updatePlaybackBar();
-
-    // Reserve scroll space matching the actual playback-bar height so the
-    // last list item is never covered. Re-measure on resize and after any
-    // updates that might change the bar layout.
-    measurePlaybackBar();
-    window.addEventListener('resize', measurePlaybackBar);
-    if (window.ResizeObserver) {
-      new ResizeObserver(measurePlaybackBar).observe(playbackBar);
-    }
-  }
-
-  function measurePlaybackBar() {
-    if (!playbackBar) return;
-    const h = playbackBar.getBoundingClientRect().height;
-    if (h > 0) {
-      document.body.style.setProperty('--playback-bar-h', `${Math.ceil(h)}px`);
-    }
   }
 
   function saveLineup() {
@@ -184,6 +167,10 @@
     target.setAttribute('aria-selected', 'true');
     document.getElementById(`${tabName}-view`).classList.add('active');
     applyTabState();
+
+    // Each tab starts fresh at the top of its own scroll context.
+    const scrollEl = document.querySelector('main');
+    if (scrollEl) scrollEl.scrollTop = 0;
 
     if (pushUrl) {
       // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,

@@ -35,19 +35,17 @@ html, body {
   line-height: 1.45;
   overscroll-behavior: none;
 }
+@supports (height: 100dvh) {
+  html, body { height: 100dvh; }
+}
 
+/* Three-region layout: header (top), main (scrollable middle), playback bar
+   (bottom). The bar is part of the flex flow — not position:fixed — so it
+   can never cover content; main shrinks to fit and scrolls internally. */
 body {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  /* Reserve enough room below the content that the fixed playback bar can
-     never cover anything. Floor of 260px protects us if the JS measurement
-     ever fails to write --playback-bar-h. When measured, we use the actual
-     bar height plus an 80px breathing buffer. */
-  padding-bottom: max(260px, calc(var(--playback-bar-h, 0px) + 80px));
-}
-html {
-  scroll-padding-bottom: max(220px, calc(var(--playback-bar-h, 0px) + 40px));
+  overflow: hidden;
 }
 
 button {
@@ -186,7 +184,10 @@ header {
 
 /* === Main / Views === */
 main {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;          /* lets the flex item shrink below its content */
+  overflow-y: auto;       /* the only scroll container on the page */
+  -webkit-overflow-scrolling: touch;
   padding: 14px 14px 24px;
 }
 .view { display: none; }
@@ -407,17 +408,12 @@ h3 {
 
 /* === Playback bar === */
 #playback-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex-shrink: 0;
   background:
     linear-gradient(180deg, rgba(31, 107, 52, 0.18) 0%, rgba(10, 28, 20, 0.95) 60%);
-  backdrop-filter: blur(14px);
   border-top: 2px solid var(--accent);
   box-shadow: var(--shadow);
   padding: 10px 14px calc(14px + env(safe-area-inset-bottom));
-  z-index: 10;
 }
 #playback-main {
   display: grid;
