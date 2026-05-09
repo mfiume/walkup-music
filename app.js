@@ -563,6 +563,36 @@
     updatePlaybackBar();
     updateMediaSession();
     setMediaSessionState(currentPlayer ? 'paused' : 'none');
+    // Begin downloading the upcoming batter's audio so that whenever the
+    // user finally taps Play — whether in the app, on the lock screen, or
+    // in Control Center — playback can start immediately instead of waiting
+    // for iOS to load the file from a backgrounded tab.
+    preloadForPlayer(currentPlayer);
+  }
+
+  // Set audio.src + .load() only if the source has changed. Calling .load()
+  // on an already-loaded element re-fetches and re-buffers, which is what
+  // was causing the lock-screen play delay.
+  function preloadForPlayer(player) {
+    if (!player) return;
+    if (player.announcement && !audioHasSrc(announcementAudio, player.announcement)) {
+      announcementAudio.src = player.announcement;
+      try { announcementAudio.load(); } catch (_) {}
+    }
+    if (player.walkup && !audioHasSrc(walkupAudio, player.walkup)) {
+      walkupAudio.src = player.walkup;
+      try { walkupAudio.load(); } catch (_) {}
+    }
+  }
+
+  function audioHasSrc(audio, relPath) {
+    if (!audio.src) return false;
+    try {
+      const u = new URL(audio.src);
+      return u.pathname.endsWith(relPath);
+    } catch (_) {
+      return audio.src.endsWith(relPath);
+    }
   }
 
   // === Now Playing (fullscreen) ===
@@ -680,15 +710,22 @@
     currentPlayer = player;
     isPaused = false;
 
-    // Pre-load the walk-up so we can start it overlapping the announcement
-    walkupAudio.src = player.walkup || '';
+    // Set src + load only if it isn't already set to this file. This avoids
+    // re-fetching the audio on every play, which on iOS is what stalls
+    // lock-screen playback for a couple of seconds.
+    if (player.walkup && !audioHasSrc(walkupAudio, player.walkup)) {
+      walkupAudio.src = player.walkup;
+      try { walkupAudio.load(); } catch (_) {}
+    }
     walkupAudio.volume = MUSIC_DUCKED_VOL;
     walkupAudio.currentTime = 0;
-    try { walkupAudio.load(); } catch (_) {}
 
     if (player.announcement) {
       playbackPhase = 'announcement';
-      announcementAudio.src = player.announcement;
+      if (!audioHasSrc(announcementAudio, player.announcement)) {
+        announcementAudio.src = player.announcement;
+        try { announcementAudio.load(); } catch (_) {}
+      }
       announcementAudio.volume = 1.0;
       announcementAudio.currentTime = 0;
       announcementAudio.play().then(() => {
