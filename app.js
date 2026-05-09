@@ -362,31 +362,69 @@
         playPlayer(p);
       });
 
-      // Drag reorder
+      // Drag reorder — live preview: as the user drags over other rows,
+      // the lineup rearranges in real time so they can see the new order
+      // before they let go. Dropping just commits whatever the order
+      // already is; cancelling (esc / drop outside) leaves it as-is.
       row.addEventListener('dragstart', (e) => {
         dragIdx = idx;
         row.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
+        // Some browsers refuse to start a drag without setData
+        try { e.dataTransfer.setData('text/plain', String(idx)); } catch (_) {}
       });
       row.addEventListener('dragend', () => {
         row.classList.remove('dragging');
         dragIdx = -1;
+        saveLineup();
+        // Full re-render to reset event closures with the new order
+        renderLineup();
+        updatePlaybackBar();
       });
       row.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-      });
-      row.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (dragIdx < 0 || dragIdx === idx) return;
-        const moved = lineup.splice(dragIdx, 1)[0];
-        lineup.splice(idx, 0, moved);
+        if (dragIdx < 0) return;
+
+        // Use the row's *current* DOM position, not the closure-captured idx,
+        // since we shuffle children during the drag.
+        const targetIdx = Array.from(lineupList.children).indexOf(row);
+        if (targetIdx < 0 || targetIdx === dragIdx) return;
+
+        const rect = row.getBoundingClientRect();
+        const isBelow = e.clientY > rect.top + rect.height / 2;
+        let newIdx = isBelow ? targetIdx + 1 : targetIdx;
+        if (dragIdx < newIdx) newIdx -= 1;  // removing dragIdx shifts later positions down
+        if (newIdx === dragIdx) return;
+
+        // 1. Mutate the lineup array
+        const num = lineup.splice(dragIdx, 1)[0];
+        lineup.splice(newIdx, 0, num);
+
+        // 2. Move the dragged row in the DOM (preserves its drag identity)
+        const draggedEl = lineupList.children[dragIdx];
+        if (draggedEl) {
+          if (isBelow) row.parentNode.insertBefore(draggedEl, row.nextSibling);
+          else         row.parentNode.insertBefore(draggedEl, row);
+        }
+
+        // 3. Refresh position numbers + active highlight
+        Array.from(lineupList.children).forEach((el, i) => {
+          const posEl = el.querySelector('.lineup-pos');
+          if (posEl) posEl.textContent = String(i + 1);
+        });
+
+        // 4. Track the current player's index if they're in the lineup
         if (currentPlayer) {
           currentBatterIdx = lineup.indexOf(currentPlayer.number);
         }
-        saveLineup();
-        renderLineup();
-        updatePlaybackBar();
+
+        dragIdx = newIdx;
+      });
+      row.addEventListener('drop', (e) => {
+        // The reorder already happened in dragover; just suppress the
+        // default and let dragend persist.
+        e.preventDefault();
       });
 
       lineupList.appendChild(row);
