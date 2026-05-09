@@ -91,27 +91,22 @@ header {
   gap: 12px;
   min-width: 0;
 }
+/* The team's actual blackletter "B" silhouette, painted gold via a CSS mask
+   so it shows up as gold-on-green on our header. */
 .brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffe065 0%, var(--accent) 55%, #d3a30a 100%);
-  color: var(--green);
-  font-weight: 900;
-  font-size: 1.25rem;
-  font-family: "Georgia", "Times New Roman", serif;
-  font-style: italic;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
-  letter-spacing: -0.04em;
-  line-height: 1;
-  padding-bottom: 2px;
+  background-color: var(--accent);
+  -webkit-mask-image: url('icon-bloordale-b.png');
+          mask-image: url('icon-bloordale-b.png');
+  -webkit-mask-size: contain;
+          mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+          mask-position: center;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
 }
 .brand-text {
   display: flex;
@@ -178,7 +173,7 @@ header {
 @media (max-width: 480px) {
   .header-inner { padding: 10px 12px; gap: 10px; }
   .brand-sub { display: none; }
-  .brand-mark { width: 34px; height: 34px; font-size: 1.1rem; }
+  .brand-mark { width: 36px; height: 36px; }
   .brand-name { font-size: 0.95rem; letter-spacing: 0.03em; }
   .tab { padding: 7px 14px; font-size: 0.82rem; }
 }
