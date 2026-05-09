@@ -30,7 +30,7 @@
   <meta name="twitter:description" content="Announcements + walk-up music for every batter, every at-bat.">
   <meta name="twitter:image" content="https://mfiume.github.io/walkup-music/og-image.png?v=1">
 
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -57,6 +57,17 @@
 
   <main>
     <section id="lineup-view" class="view active">
+      <button id="team-intro-btn" class="pregame-btn" type="button" aria-label="Play team intro">
+        <span class="pregame-icon" aria-hidden="true">
+          <svg id="pregame-play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <svg id="pregame-pause-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
+        </span>
+        <span class="pregame-text">
+          <span class="pregame-title">Your Bloordale Bombers</span>
+          <span class="pregame-sub">Team intro · play before first pitch</span>
+        </span>
+      </button>
+
       <div id="lineup-header">
         <h3>Batting Order</h3>
         <button id="clear-lineup-btn" class="clear-btn">Clear</button>
@@ -174,7 +185,8 @@
 
   <audio id="announcement-audio" preload="auto"></audio>
   <audio id="walkup-audio" preload="auto"></audio>
+  <audio id="team-intro-audio" preload="auto" src="audio/simple/team-intro.wav"></audio>
 
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

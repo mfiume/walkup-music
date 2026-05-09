@@ -79,6 +79,12 @@
   const npPlayIcon = document.getElementById('np-play-icon');
   const npPauseIcon = document.getElementById('np-pause-icon');
 
+  // Pre-game team intro
+  const teamIntroBtn = document.getElementById('team-intro-btn');
+  const teamIntroAudio = document.getElementById('team-intro-audio');
+  const pregamePlayIcon = document.getElementById('pregame-play-icon');
+  const pregamePauseIcon = document.getElementById('pregame-pause-icon');
+
   // === Init ===
   // Unregister any stale service worker that might be intercepting fetches
   // and serving an old build. Runs once per page load.
@@ -117,6 +123,7 @@
     bindNowPlaying();
     bindAudioEvents();
     bindSettings();
+    bindTeamIntro();
 
     // If we have a lineup, point at the leadoff batter so the bar shows
     // "Up Next: batter 1" right away. Just tap Play to start the game.
@@ -206,6 +213,42 @@
     window.addEventListener('popstate', () => {
       activateTab(tabFromUrl(), { pushUrl: false });
     });
+  }
+
+  // === Pre-game team intro ===
+  function bindTeamIntro() {
+    if (!teamIntroBtn || !teamIntroAudio) return;
+    teamIntroBtn.addEventListener('click', () => {
+      if (!teamIntroAudio.paused) {
+        teamIntroAudio.pause();
+        teamIntroAudio.currentTime = 0;
+        setIntroPlaying(false);
+        return;
+      }
+      // If a batter is queued or playing, stop them first; the intro is a
+      // one-shot that owns the speakers for its duration.
+      if (playbackPhase || isPaused) {
+        stopAll();
+        if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
+        else updatePlaybackBar();
+      }
+      teamIntroAudio.currentTime = 0;
+      const p = teamIntroAudio.play();
+      if (p && p.catch) p.catch(() => {});
+      setIntroPlaying(true);
+    });
+    teamIntroAudio.addEventListener('ended', () => setIntroPlaying(false));
+    teamIntroAudio.addEventListener('pause', () => {
+      if (teamIntroAudio.currentTime === 0) setIntroPlaying(false);
+    });
+  }
+
+  function setIntroPlaying(playing) {
+    if (!teamIntroBtn) return;
+    teamIntroBtn.classList.toggle('playing', playing);
+    if (pregamePlayIcon) pregamePlayIcon.style.display = playing ? 'none' : '';
+    if (pregamePauseIcon) pregamePauseIcon.style.display = playing ? '' : 'none';
+    teamIntroBtn.setAttribute('aria-label', playing ? 'Stop team intro' : 'Play team intro');
   }
 
   // === Settings ===

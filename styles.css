@@ -40,14 +40,15 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  /* The exact reserve below the content is set by JS (--playback-bar-h)
-     to whatever the playback bar actually renders at, plus a generous
-     visual buffer so the last list item sits well clear of the bar.
-     Fallback handles the brief moment before JS runs. */
-  padding-bottom: calc(var(--playback-bar-h, 200px) + 56px);
+  /* Reserve enough room below the content that the fixed playback bar can
+     never cover anything. Floor of 260px protects us if the JS measurement
+     ever fails to write --playback-bar-h. When measured, we use the actual
+     bar height plus an 80px breathing buffer. */
+  padding-bottom: max(260px, calc(var(--playback-bar-h, 0px) + 80px));
 }
-/* Help anchors / focus scrolling stop above the bar too */
-html { scroll-padding-bottom: calc(var(--playback-bar-h, 200px) + 24px); }
+html {
+  scroll-padding-bottom: max(220px, calc(var(--playback-bar-h, 0px) + 40px));
+}
 
 button {
   font: inherit;
@@ -858,3 +859,76 @@ h3 {
   color: var(--muted);
   line-height: 1.5;
 }
+
+/* === Pre-game team intro button (Lineup view, top) === */
+.pregame-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.05));
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  border-radius: 14px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.1s ease, box-shadow 0.18s ease;
+}
+.pregame-btn:hover {
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.26), rgba(var(--accent-rgb), 0.10));
+  border-color: rgba(var(--accent-rgb), 0.7);
+}
+.pregame-btn:active { transform: scale(0.99); }
+.pregame-btn.playing {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.45);
+}
+
+.pregame-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--green);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.pregame-btn.playing .pregame-icon {
+  background: var(--green);
+  color: var(--accent);
+}
+
+.pregame-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.pregame-title {
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pregame-btn.playing .pregame-title { color: var(--green); }
+
+.pregame-sub {
+  font-size: 0.7rem;
+  color: rgba(247, 243, 226, 0.7);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.pregame-btn.playing .pregame-sub { color: rgba(31, 107, 52, 0.85); }
