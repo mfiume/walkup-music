@@ -136,6 +136,24 @@
     renderLineup();
     renderAvailable();
     updatePlaybackBar();
+
+    // The playback bar is absolutely-positioned over the bottom of <main>
+    // (so content scrolls visually beneath it). Sync main's bottom padding
+    // to the bar's actual height so the last list item can always be
+    // scrolled fully into view above the bar.
+    syncBarHeight();
+    window.addEventListener('resize', syncBarHeight);
+    if (window.ResizeObserver) {
+      new ResizeObserver(syncBarHeight).observe(playbackBar);
+    }
+  }
+
+  function syncBarHeight() {
+    if (!playbackBar) return;
+    const h = playbackBar.getBoundingClientRect().height;
+    if (h > 0) {
+      document.body.style.setProperty('--bar-h', `${Math.ceil(h)}px`);
+    }
   }
 
   function saveLineup() {
