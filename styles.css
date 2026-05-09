@@ -860,75 +860,78 @@ h3 {
   line-height: 1.5;
 }
 
-/* === Pre-game team intro button (Lineup view, top) === */
+/* === Pre-game team intro button (Lineup view, top) ===
+   Visual: matches an inactive lineup row (panel bg, panel border, 12px
+   radius). The right-side play button mirrors .lineup-play. When playing,
+   the row picks up the same gold-tinted active treatment as a current
+   batter row, so the state read is consistent across the page. */
 .pregame-btn {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
-  padding: 14px 16px;
-  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.05));
-  border: 1px solid rgba(var(--accent-rgb), 0.45);
-  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   color: var(--text);
   text-align: left;
   cursor: pointer;
   margin-top: 4px;
   margin-bottom: 6px;
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.1s ease, box-shadow 0.18s ease;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.18s ease;
 }
-.pregame-btn:hover {
-  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.26), rgba(var(--accent-rgb), 0.10));
-  border-color: rgba(var(--accent-rgb), 0.7);
-}
+.pregame-btn:hover { background: var(--panel-2); }
 .pregame-btn:active { transform: scale(0.99); }
 .pregame-btn.playing {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.45);
+  border-color: rgba(var(--accent-rgb), 0.6);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(var(--accent-rgb), 0.04));
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2) inset;
 }
 
 .pregame-icon {
-  width: 46px;
-  height: 46px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent);
-  color: var(--green);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3),
-              inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  order: 2;                  /* sits at the right, like .lineup-play */
+  margin-left: auto;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.pregame-btn:hover .pregame-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.5);
 }
 .pregame-btn.playing .pregame-icon {
-  background: var(--green);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--green);
+  border-color: var(--accent);
 }
 
 .pregame-text {
   display: flex;
   flex-direction: column;
-  gap: 3px;
   min-width: 0;
-  flex: 1;
 }
 .pregame-title {
-  font-weight: 800;
-  font-size: 1.05rem;
-  letter-spacing: 0.01em;
-  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pregame-btn.playing .pregame-title { color: var(--green); }
-
 .pregame-sub {
-  font-size: 0.7rem;
-  color: rgba(247, 243, 226, 0.7);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.pregame-btn.playing .pregame-sub { color: rgba(31, 107, 52, 0.85); }
