@@ -30,7 +30,7 @@
   <meta name="twitter:description" content="Announcements + walk-up music for every batter, every at-bat.">
   <meta name="twitter:image" content="https://mfiume.github.io/walkup-music/og-image.png?v=1">
 
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -50,6 +50,7 @@
       <nav class="tab-group" role="tablist" aria-label="Sections">
         <button class="tab active" data-tab="lineup" role="tab" aria-selected="true">Lineup</button>
         <button class="tab" data-tab="roster" role="tab" aria-selected="false">Roster</button>
+        <button class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
       </nav>
     </div>
   </header>
@@ -68,6 +69,31 @@
     </section>
 
     <section id="roster-view" class="view"></section>
+
+    <section id="settings-view" class="view">
+      <h3>Walk-Up Mode</h3>
+      <p class="settings-desc">How the announcement and music line up at each at-bat.</p>
+      <div class="settings-options" role="radiogroup" aria-label="Walk-up mode">
+        <button class="settings-opt" data-mode="sequential" role="radio" aria-checked="true">
+          <span class="settings-opt-head">
+            <span class="settings-opt-title">Sequential</span>
+            <span class="settings-opt-check" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+          </span>
+          <span class="settings-opt-desc">Announcement plays first; music ducks in under the tail and takes over at the end.</span>
+        </button>
+        <button class="settings-opt" data-mode="overlap" role="radio" aria-checked="false">
+          <span class="settings-opt-head">
+            <span class="settings-opt-title">Overlap</span>
+            <span class="settings-opt-check" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+          </span>
+          <span class="settings-opt-desc">Music starts at t=0 underneath the announcement at low volume, then ramps to full when the announcement ends.</span>
+        </button>
+      </div>
+    </section>
   </main>
 
   <div id="playback-bar">
@@ -149,6 +175,6 @@
   <audio id="announcement-audio" preload="auto"></audio>
   <audio id="walkup-audio" preload="auto"></audio>
 
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

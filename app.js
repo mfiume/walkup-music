@@ -29,6 +29,9 @@
   let walkupFadeTimeout = null;
   let announcementOverlapTimer = null;
   let wakeLock = null;
+  // 'sequential' (announcement first, music ducks in at the tail) or
+  // 'overlap' (music plays under announcement from t=0 then ramps up).
+  let playbackMode = localStorage.getItem('walkup-simple-mode') || 'sequential';
 
   // Reorder state
   let dragIdx = -1;
@@ -113,6 +116,7 @@
     bindTransport();
     bindNowPlaying();
     bindAudioEvents();
+    bindSettings();
 
     // If we have a lineup, point at the leadoff batter so the bar shows
     // "Up Next: batter 1" right away. Just tap Play to start the game.
@@ -177,7 +181,7 @@
     if (pushUrl) {
       // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,
       // but a local file:// or root deploy gets clean /lineup paths too.
-      const base = location.pathname.replace(/\/(lineup|roster)\/?$/, '');
+      const base = location.pathname.replace(/\/(lineup|roster|settings)\/?$/, '');
       const next = base.replace(/\/$/, '') + '/' + tabName;
       try {
         history.pushState({ tab: tabName }, '', next);
@@ -186,7 +190,7 @@
   }
 
   function tabFromUrl() {
-    const m = location.pathname.match(/\/(lineup|roster)\/?$/);
+    const m = location.pathname.match(/\/(lineup|roster|settings)\/?$/);
     return m ? m[1] : 'lineup';
   }
 
@@ -202,6 +206,30 @@
     window.addEventListener('popstate', () => {
       activateTab(tabFromUrl(), { pushUrl: false });
     });
+  }
+
+  // === Settings ===
+  function bindSettings() {
+    const opts = document.querySelectorAll('.settings-opt');
+    function paint() {
+      opts.forEach(o => {
+        const isActive = o.dataset.mode === playbackMode;
+        o.classList.toggle('active', isActive);
+        o.setAttribute('aria-checked', isActive ? 'true' : 'false');
+      });
+    }
+    opts.forEach(o => {
+      o.addEventListener('click', () => {
+        playbackMode = o.dataset.mode;
+        localStorage.setItem('walkup-simple-mode', playbackMode);
+        paint();
+        // Re-arm the timeline math for the new mode if anything is queued up.
+        // We don't rip out an in-progress at-bat; the change applies to the
+        // next batter that's sent up.
+        if (!playbackPhase) updatePlaybackBar();
+      });
+    });
+    paint();
   }
 
   // === Roster (preview) ===
@@ -574,7 +602,15 @@
       announcementAudio.volume = 1.0;
       announcementAudio.currentTime = 0;
       announcementAudio.play().then(() => {
-        scheduleAnnouncementOverlap();
+        if (playbackMode === 'overlap') {
+          // Music plays the entire time, ducked underneath the announcement.
+          // It started loading above; kick off playback now from t=0.
+          walkupAudio.currentTime = 0;
+          walkupAudio.volume = MUSIC_DUCKED_VOL;
+          walkupAudio.play().catch(() => {});
+        } else {
+          scheduleAnnouncementOverlap();
+        }
       }).catch(err => {
         console.warn('Announcement play failed, going straight to walk-up', err);
         startWalkup();
@@ -649,26 +685,36 @@
     return isFinite(d) && d > 0 ? d : 0;
   }
 
-  // Combined at-bat duration: announcement + music, minus the 1.2s overlap
-  // where the music ducks in under the tail of the announcement.
+  // Combined at-bat duration. Two modes:
+  //   sequential: announcement + music − overlap (music ducks in at the tail)
+  //   overlap:    max(announcement, music) — both start at t=0; whichever
+  //               clip is longer sets the bar's total. In practice the music
+  //               is always longer than the announcement.
   function effectiveAtBatTotal() {
     const ann = announcementTotal();
     const walkup = effectiveWalkupTotal();
     if (ann <= 0) return walkup;
+    if (playbackMode === 'overlap') return Math.max(ann, walkup);
     return ann + walkup - OVERLAP_S;
   }
 
   // Where we are in the combined at-bat timeline. Continuous across the
   // announcement → music transition.
   function atBatElapsed() {
+    if (playbackMode === 'overlap') {
+      // Both audios share the same t=0, so the master clock is whichever
+      // is currently audible. Music is the steadier clock since it plays
+      // through the entire at-bat.
+      const w = walkupAudio.currentTime;
+      const a = announcementAudio.currentTime;
+      return Math.max(w || 0, a || 0);
+    }
+    // sequential mode
     if (playbackPhase === 'announcement') {
       return announcementAudio.currentTime;
     }
     if (playbackPhase === 'walkup') {
       const ann = announcementTotal();
-      // Once we're in the walkup phase, walkupAudio.currentTime starts ~OVERLAP_S
-      // (since music began that far before the announcement ended). Subtracting
-      // OVERLAP_S gives a smooth handoff from the announcement clock.
       return ann > 0
         ? ann + walkupAudio.currentTime - OVERLAP_S
         : walkupAudio.currentTime;
@@ -684,7 +730,14 @@
       // Only schedule a fade-out if the song is longer than our cap. For short
       // clips (≤ cap), let them play to their natural end via the 'ended' event.
       if (!isFinite(walkupAudio.duration) || walkupAudio.duration > WALKUP_DURATION_S) {
-        const fadeStartMs = Math.max(0, (total - FADE_OUT_S) * 1000);
+        // Schedule by how much music is left, not by the cap. This lands the
+        // fade right at the cap regardless of how far in we already are
+        // (overlap mode starts the music at t=0, so by walkup phase the music
+        // is already several seconds in).
+        const fadeStartMs = Math.max(
+          0,
+          (total - FADE_OUT_S - walkupAudio.currentTime) * 1000
+        );
         walkupFadeTimeout = setTimeout(() => {
           fade(walkupAudio, walkupAudio.volume, 0, FADE_OUT_S * 1000, () => {
             walkupAudio.pause();
