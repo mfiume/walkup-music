@@ -41,10 +41,13 @@ body {
   flex-direction: column;
   min-height: 100vh;
   /* The exact reserve below the content is set by JS (--playback-bar-h)
-     to whatever the playback bar actually renders at, plus a small buffer.
+     to whatever the playback bar actually renders at, plus a generous
+     visual buffer so the last list item sits well clear of the bar.
      Fallback handles the brief moment before JS runs. */
-  padding-bottom: calc(var(--playback-bar-h, 200px) + 16px);
+  padding-bottom: calc(var(--playback-bar-h, 200px) + 56px);
 }
+/* Help anchors / focus scrolling stop above the bar too */
+html { scroll-padding-bottom: calc(var(--playback-bar-h, 200px) + 24px); }
 
 button {
   font: inherit;
@@ -305,6 +308,7 @@ h3 {
 .lineup-remove:hover { background: rgba(239, 83, 80, 0.12); color: var(--danger); border-color: rgba(239, 83, 80, 0.3); }
 
 /* === Available list (lineup tab) === */
+#available-players { margin-bottom: 8px; }
 #available-list {
   display: flex;
   flex-direction: column;
