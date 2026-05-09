@@ -31,7 +31,8 @@
   let wakeLock = null;
   // 'sequential' (announcement first, music ducks in at the tail) or
   // 'overlap' (music plays under announcement from t=0 then ramps up).
-  let playbackMode = localStorage.getItem('walkup-simple-mode') || 'sequential';
+  // Overlap is the default — feels more like a real stadium walk-up.
+  let playbackMode = localStorage.getItem('walkup-simple-mode') || 'overlap';
 
   // Reorder state
   let dragIdx = -1;
