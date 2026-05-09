@@ -124,6 +124,7 @@
     bindAudioEvents();
     bindSettings();
     bindTeamIntro();
+    bindMediaSession();
 
     // If we have a lineup, point at the leadoff batter so the bar shows
     // "Up Next: batter 1" right away. Just tap Play to start the game.
@@ -559,6 +560,8 @@
     npTimeCurrent.textContent = '0:00';
     setPlayPauseIcon(false);
     updatePlaybackBar();
+    updateMediaSession();
+    setMediaSessionState(currentPlayer ? 'paused' : 'none');
   }
 
   // === Now Playing (fullscreen) ===
@@ -709,6 +712,8 @@
     setPlayPauseIcon(true);
     startProgressLoop();
     updatePlaybackBar();
+    updateMediaSession();
+    setMediaSessionState('playing');
   }
 
   function scheduleAnnouncementOverlap() {
@@ -873,6 +878,7 @@
     isPaused = true;
     setPlayPauseIcon(false);
     stopProgressLoop();
+    setMediaSessionState('paused');
   }
 
   function resumePlayback() {
@@ -886,6 +892,7 @@
     }
     setPlayPauseIcon(true);
     startProgressLoop();
+    setMediaSessionState('playing');
   }
 
   function stopAll() {
@@ -900,6 +907,7 @@
     isPaused = false;
     stopProgressLoop();
     setPlayPauseIcon(false);
+    setMediaSessionState('none');
   }
 
   // === Fade helper ===
@@ -1005,6 +1013,7 @@
       timeTotal.textContent = tot;
       npTimeCurrent.textContent = cur;
       npTimeTotal.textContent = tot;
+      updateMediaPosition();
     }, 200);
   }
   function stopProgressLoop() {
@@ -1023,6 +1032,84 @@
     const div = document.createElement('div');
     div.textContent = text == null ? '' : text;
     return div.innerHTML;
+  }
+
+  // === Media Session — iOS Control Center / lock-screen controls ===
+  // Sets the artwork (gold B on green) + title/artist for the current
+  // batter, and wires play/pause/prev/next to the same lineup logic.
+  function bindMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (!currentPlayer && currentBatterIdx >= 0 && lineup.length > 0) {
+          const p = roster.find(x => x.number === lineup[currentBatterIdx]);
+          if (p) { playPlayer(p); return; }
+        }
+        if (!currentPlayer) return;
+        if (isPaused) resumePlayback();
+        else if (!playbackPhase) playPlayer(currentPlayer);
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (playbackPhase) pausePlayback();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', mediaSessionPrev);
+      navigator.mediaSession.setActionHandler('nexttrack', mediaSessionNext);
+    } catch (_) {}
+  }
+
+  function mediaSessionPrev() {
+    if (lineup.length === 0) return;
+    if (currentBatterIdx < 0) currentBatterIdx = 0;
+    currentBatterIdx = (currentBatterIdx - 1 + lineup.length) % lineup.length;
+    const p = roster.find(x => x.number === lineup[currentBatterIdx]);
+    if (p) playPlayer(p);
+  }
+  function mediaSessionNext() {
+    if (lineup.length === 0) return;
+    if (currentBatterIdx < 0) currentBatterIdx = 0;
+    currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
+    const p = roster.find(x => x.number === lineup[currentBatterIdx]);
+    if (p) playPlayer(p);
+  }
+
+  function updateMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    if (!currentPlayer) {
+      try { navigator.mediaSession.metadata = null; } catch (_) {}
+      return;
+    }
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
+        artist: currentPlayer.song || 'Walk-Up',
+        album: 'Bloordale Bombers',
+        artwork: [
+          { src: 'icon-192.png?v=2', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png?v=2', sizes: '512x512', type: 'image/png' },
+        ],
+      });
+    } catch (_) {}
+  }
+
+  function setMediaSessionState(state) {
+    if (!('mediaSession' in navigator)) return;
+    try { navigator.mediaSession.playbackState = state; } catch (_) {}
+  }
+
+  function updateMediaPosition() {
+    if (!('mediaSession' in navigator)) return;
+    if (!navigator.mediaSession.setPositionState) return;
+    if (!playbackPhase) return;
+    const total = effectiveAtBatTotal();
+    const elapsed = atBatElapsed();
+    if (!isFinite(total) || total <= 0) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: total,
+        position: Math.min(Math.max(0, elapsed), total),
+        playbackRate: 1.0,
+      });
+    } catch (_) {}
   }
 
   // === Wake Lock (best-effort) ===
