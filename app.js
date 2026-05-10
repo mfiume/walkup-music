@@ -139,6 +139,12 @@
     renderAvailable();
     updatePlaybackBar();
 
+    // Keep the Bluetooth speaker awake even before the first batter is sent up.
+    // The very first tone won't make sound until the user taps something
+    // (browsers gate AudioContext on a user gesture), but the schedule is
+    // running and will start ticking as soon as the context is unlocked.
+    startKeepalive();
+
     // The playback bar is absolutely-positioned over the bottom of <main>
     // (so content scrolls visually beneath it). Sync main's bottom padding
     // to the bar's actual height so the last list item can always be
@@ -256,6 +262,7 @@
     if (pregamePlayIcon) pregamePlayIcon.style.display = playing ? 'none' : '';
     if (pregamePauseIcon) pregamePauseIcon.style.display = playing ? '' : 'none';
     teamIntroBtn.setAttribute('aria-label', playing ? 'Stop team intro' : 'Play team intro');
+    if (playing) stopKeepalive(); else startKeepalive();
   }
 
   // === Settings ===
@@ -747,6 +754,7 @@
     }
 
     acquireWakeLock();
+    stopKeepalive();
     setPlayPauseIcon(true);
     startProgressLoop();
     updatePlaybackBar();
@@ -906,6 +914,8 @@
       currentPlayer = null;
       updatePlaybackBar();
     }
+    // Between batters, kick the BT speaker every 25s so it doesn't sleep.
+    startKeepalive();
   }
 
   function pausePlayback() {
@@ -917,6 +927,7 @@
     setPlayPauseIcon(false);
     stopProgressLoop();
     setMediaSessionState('paused');
+    startKeepalive();
   }
 
   function resumePlayback() {
@@ -931,6 +942,7 @@
     setPlayPauseIcon(true);
     startProgressLoop();
     setMediaSessionState('playing');
+    stopKeepalive();
   }
 
   function stopAll() {
@@ -946,6 +958,7 @@
     stopProgressLoop();
     setPlayPauseIcon(false);
     setMediaSessionState('none');
+    startKeepalive();
   }
 
   // === Fade helper ===
@@ -1148,6 +1161,63 @@
         playbackRate: 1.0,
       });
     } catch (_) {}
+  }
+
+  // === Bluetooth speaker keepalive ===
+  // Many BT speakers go into power-save / disconnect after ~30s of true
+  // silence. When that happens, audio quietly routes back to the phone
+  // speaker and the user has no idea. This plays a very quiet, very
+  // short tone every 25 seconds while no real audio is playing to keep
+  // the link active.
+  let keepaliveCtx = null;
+  let keepaliveTimer = null;
+  const KEEPALIVE_INTERVAL_MS = 20_000;
+  // 30 Hz is below most consumer speakers' usable response curve and below
+  // the typical 40-50 Hz lower edge of human pitch perception. At a gain of
+  // 0.0005 (-66 dBFS) it's effectively silent — but the BT codec still
+  // sees a non-zero waveform and won't trigger the speaker's silence gate.
+  const KEEPALIVE_TONE_HZ = 30;
+  const KEEPALIVE_TONE_GAIN = 0.0005;
+  const KEEPALIVE_TONE_S = 0.25;
+
+  function ensureKeepaliveCtx() {
+    if (keepaliveCtx) return keepaliveCtx;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) keepaliveCtx = new Ctx();
+    } catch (_) {}
+    return keepaliveCtx;
+  }
+
+  function playKeepaliveTone() {
+    const ctx = ensureKeepaliveCtx();
+    if (!ctx) return;
+    try {
+      if (ctx.state === 'suspended') ctx.resume();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = KEEPALIVE_TONE_HZ;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(KEEPALIVE_TONE_GAIN, now + 0.02);
+      gain.gain.linearRampToValueAtTime(0.0001, now + KEEPALIVE_TONE_S);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + KEEPALIVE_TONE_S + 0.05);
+    } catch (_) {}
+  }
+
+  function startKeepalive() {
+    if (keepaliveTimer) return;
+    keepaliveTimer = setInterval(playKeepaliveTone, KEEPALIVE_INTERVAL_MS);
+  }
+
+  function stopKeepalive() {
+    if (keepaliveTimer) {
+      clearInterval(keepaliveTimer);
+      keepaliveTimer = null;
+    }
   }
 
   // === Wake Lock (best-effort) ===
