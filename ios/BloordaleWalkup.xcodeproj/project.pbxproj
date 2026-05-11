@@ -1,0 +1,433 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0D6AE71ACA9B4F02C9BBF61D /* MiniPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1398B3641715DF217E14CEB /* MiniPlayerBar.swift */; };
+		134E99049319044F93136255 /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF3A7BAC023CBA3852C1711 /* NowPlayingView.swift */; };
+		2B679B7AF0AA77CFE1C9BBDB /* WalkupPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B59E73C4417A0F66DFA7CDD /* WalkupPlayer.swift */; };
+		3671A554EA1C546821AD0882 /* roster.json in Resources */ = {isa = PBXBuildFile; fileRef = 2752D2ED9DDE4827A67622DA /* roster.json */; };
+		38DD893E95EF8D00C5A7CECA /* BloordaleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B90611D0CEC7A654A763E2 /* BloordaleApp.swift */; };
+		5BEDC8ED17FC2CE39746B8F4 /* RosterLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DB48E18064F28A19916A49 /* RosterLoader.swift */; };
+		5F7FD254B252999D4623C0D6 /* LineupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0182F8F3AF6FFA64FFA8BE68 /* LineupView.swift */; };
+		6A65848C5CEBD0CD1290EE64 /* KeepaliveTone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8F0BB0D2BD87F9AD1AB496 /* KeepaliveTone.swift */; };
+		782572D3B15140BFC25686BB /* Audio in Resources */ = {isa = PBXBuildFile; fileRef = 6FC7DEF4A23EB84E8288D580 /* Audio */; };
+		8550EBEE07E3A826CF217F88 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FAC085EA6FAF58DD51C7A85 /* AudioSessionManager.swift */; };
+		92BF2A863FD753156361DA69 /* NowPlayingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F2CEC24C419E65BF863763 /* NowPlayingService.swift */; };
+		94544945DD726EBC12063C7C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2B74AE2BEC11C9E2811FB1 /* AppModel.swift */; };
+		9FC93134344437E36FDC184A /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9051FB1B5AF8CF7E64A4EA6B /* RootView.swift */; };
+		A85E80894F3FF98B6DD6866B /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C94C97DE0B6EE8C62F5CB0B /* Player.swift */; };
+		EBB194C009110D2EE6302498 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F3A2076AD1505F48D3A9B0 /* SettingsView.swift */; };
+		ECE48FC193E1F15CB7169890 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 17D5D06FC8D9B36FC5D852A7 /* Assets.xcassets */; };
+		FB7A339FCB67ED596E565ECD /* RosterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8086709B508B50917D3C82 /* RosterView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0182F8F3AF6FFA64FFA8BE68 /* LineupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineupView.swift; sourceTree = "<group>"; };
+		01DB48E18064F28A19916A49 /* RosterLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RosterLoader.swift; sourceTree = "<group>"; };
+		17D5D06FC8D9B36FC5D852A7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1C9460693E121B294DCAD012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1D44940DF5E654CE9EA8F093 /* BloordaleWalkup.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BloordaleWalkup.entitlements; sourceTree = "<group>"; };
+		24F3A2076AD1505F48D3A9B0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		2752D2ED9DDE4827A67622DA /* roster.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = roster.json; sourceTree = "<group>"; };
+		4AF3A7BAC023CBA3852C1711 /* NowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingView.swift; sourceTree = "<group>"; };
+		4FAC085EA6FAF58DD51C7A85 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		50F2CEC24C419E65BF863763 /* NowPlayingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingService.swift; sourceTree = "<group>"; };
+		5B59E73C4417A0F66DFA7CDD /* WalkupPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkupPlayer.swift; sourceTree = "<group>"; };
+		6C94C97DE0B6EE8C62F5CB0B /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
+		6E32733310B8F88D40BA2468 /* BloordaleWalkup.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BloordaleWalkup.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6F8F0BB0D2BD87F9AD1AB496 /* KeepaliveTone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepaliveTone.swift; sourceTree = "<group>"; };
+		6FC7DEF4A23EB84E8288D580 /* Audio */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Audio; path = BloordaleWalkup/Resources/Audio; sourceTree = SOURCE_ROOT; };
+		9051FB1B5AF8CF7E64A4EA6B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		90B90611D0CEC7A654A763E2 /* BloordaleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BloordaleApp.swift; sourceTree = "<group>"; };
+		BF2B74AE2BEC11C9E2811FB1 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		C1398B3641715DF217E14CEB /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
+		EE8086709B508B50917D3C82 /* RosterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RosterView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		3CCE630E1BDA7E62AE74E1FA /* BloordaleWalkup */ = {
+			isa = PBXGroup;
+			children = (
+				D7028068BCB505913B533BD2 /* Resources */,
+				CEEF4073D6225C9472027EEF /* Sources */,
+				83F2E857DDEE19A27D7E4CA5 /* Supporting */,
+			);
+			path = BloordaleWalkup;
+			sourceTree = "<group>";
+		};
+		83F2E857DDEE19A27D7E4CA5 /* Supporting */ = {
+			isa = PBXGroup;
+			children = (
+				1D44940DF5E654CE9EA8F093 /* BloordaleWalkup.entitlements */,
+				1C9460693E121B294DCAD012 /* Info.plist */,
+			);
+			path = Supporting;
+			sourceTree = "<group>";
+		};
+		8B67AB13238C6E5FAE466B16 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				90B90611D0CEC7A654A763E2 /* BloordaleApp.swift */,
+				0182F8F3AF6FFA64FFA8BE68 /* LineupView.swift */,
+				C1398B3641715DF217E14CEB /* MiniPlayerBar.swift */,
+				4AF3A7BAC023CBA3852C1711 /* NowPlayingView.swift */,
+				9051FB1B5AF8CF7E64A4EA6B /* RootView.swift */,
+				EE8086709B508B50917D3C82 /* RosterView.swift */,
+				24F3A2076AD1505F48D3A9B0 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		BB1E3AB329B245F0588B2FF6 = {
+			isa = PBXGroup;
+			children = (
+				3CCE630E1BDA7E62AE74E1FA /* BloordaleWalkup */,
+				CFC84C195329132758B1187A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CA413E0637F402A70F4618CD /* State */ = {
+			isa = PBXGroup;
+			children = (
+				BF2B74AE2BEC11C9E2811FB1 /* AppModel.swift */,
+			);
+			path = State;
+			sourceTree = "<group>";
+		};
+		CEEF4073D6225C9472027EEF /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				FC5EFF1292A4926918ED5182 /* Audio */,
+				D7031C73B43D93E79355BF12 /* Models */,
+				CA413E0637F402A70F4618CD /* State */,
+				8B67AB13238C6E5FAE466B16 /* Views */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		CFC84C195329132758B1187A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6E32733310B8F88D40BA2468 /* BloordaleWalkup.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D7028068BCB505913B533BD2 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				17D5D06FC8D9B36FC5D852A7 /* Assets.xcassets */,
+				6FC7DEF4A23EB84E8288D580 /* Audio */,
+				2752D2ED9DDE4827A67622DA /* roster.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		D7031C73B43D93E79355BF12 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				6C94C97DE0B6EE8C62F5CB0B /* Player.swift */,
+				01DB48E18064F28A19916A49 /* RosterLoader.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		FC5EFF1292A4926918ED5182 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				4FAC085EA6FAF58DD51C7A85 /* AudioSessionManager.swift */,
+				6F8F0BB0D2BD87F9AD1AB496 /* KeepaliveTone.swift */,
+				50F2CEC24C419E65BF863763 /* NowPlayingService.swift */,
+				5B59E73C4417A0F66DFA7CDD /* WalkupPlayer.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		EC44951BBEB1122260DBE6CE /* BloordaleWalkup */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC6486C415D97E634E15EB66 /* Build configuration list for PBXNativeTarget "BloordaleWalkup" */;
+			buildPhases = (
+				9BBB389953CBB6A52617D5F2 /* Sources */,
+				A5DC2FF55A62CC0678F6A8D1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BloordaleWalkup;
+			packageProductDependencies = (
+			);
+			productName = BloordaleWalkup;
+			productReference = 6E32733310B8F88D40BA2468 /* BloordaleWalkup.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E00E24BE97EE4EB3AB54D733 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					EC44951BBEB1122260DBE6CE = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 657AF6DC57CD94B66546743C /* Build configuration list for PBXProject "BloordaleWalkup" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BB1E3AB329B245F0588B2FF6;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CFC84C195329132758B1187A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EC44951BBEB1122260DBE6CE /* BloordaleWalkup */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A5DC2FF55A62CC0678F6A8D1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECE48FC193E1F15CB7169890 /* Assets.xcassets in Resources */,
+				782572D3B15140BFC25686BB /* Audio in Resources */,
+				3671A554EA1C546821AD0882 /* roster.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9BBB389953CBB6A52617D5F2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				94544945DD726EBC12063C7C /* AppModel.swift in Sources */,
+				8550EBEE07E3A826CF217F88 /* AudioSessionManager.swift in Sources */,
+				38DD893E95EF8D00C5A7CECA /* BloordaleApp.swift in Sources */,
+				6A65848C5CEBD0CD1290EE64 /* KeepaliveTone.swift in Sources */,
+				5F7FD254B252999D4623C0D6 /* LineupView.swift in Sources */,
+				0D6AE71ACA9B4F02C9BBF61D /* MiniPlayerBar.swift in Sources */,
+				92BF2A863FD753156361DA69 /* NowPlayingService.swift in Sources */,
+				134E99049319044F93136255 /* NowPlayingView.swift in Sources */,
+				A85E80894F3FF98B6DD6866B /* Player.swift in Sources */,
+				9FC93134344437E36FDC184A /* RootView.swift in Sources */,
+				5BEDC8ED17FC2CE39746B8F4 /* RosterLoader.swift in Sources */,
+				FB7A339FCB67ED596E565ECD /* RosterView.swift in Sources */,
+				EBB194C009110D2EE6302498 /* SettingsView.swift in Sources */,
+				2B679B7AF0AA77CFE1C9BBDB /* WalkupPlayer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		41A907E8B1722BA82F52B40A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6EE3DD2C5653AB0F40ED0FB2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BloordaleWalkup/Supporting/BloordaleWalkup.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = BloordaleWalkup/Supporting/Info.plist;
+				INFOPLIST_KEY_UIRequiresFullScreen = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bloordale.walkup;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8EA1108D79E12DC6FE5DF99D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C3022AB50C4FD8A208A227DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BloordaleWalkup/Supporting/BloordaleWalkup.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = BloordaleWalkup/Supporting/Info.plist;
+				INFOPLIST_KEY_UIRequiresFullScreen = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bloordale.walkup;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		657AF6DC57CD94B66546743C /* Build configuration list for PBXProject "BloordaleWalkup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8EA1108D79E12DC6FE5DF99D /* Debug */,
+				41A907E8B1722BA82F52B40A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AC6486C415D97E634E15EB66 /* Build configuration list for PBXNativeTarget "BloordaleWalkup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6EE3DD2C5653AB0F40ED0FB2 /* Debug */,
+				C3022AB50C4FD8A208A227DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E00E24BE97EE4EB3AB54D733 /* Project object */;
+}
