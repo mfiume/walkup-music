@@ -1,0 +1,16 @@
+[
+  { "file": "audio/simple/library/all-i-do-is-win.mp3",    "song": "All I Do Is Win" },
+  { "file": "audio/simple/library/enter-sandman.mp3",       "song": "Enter Sandman" },
+  { "file": "audio/simple/library/fair-trade.mp3",          "song": "Fair Trade" },
+  { "file": "audio/simple/library/fireball.mp3",            "song": "Fireball" },
+  { "file": "audio/simple/library/give-it-away.mp3",        "song": "Give It Away" },
+  { "file": "audio/simple/library/home-run.mp3",            "song": "Home Run" },
+  { "file": "audio/simple/library/lion-sleeps-tonight.mp3", "song": "The Lion Sleeps Tonight" },
+  { "file": "audio/simple/library/lose-yourself.mp3",       "song": "Lose Yourself" },
+  { "file": "audio/simple/library/run-it.mp3",              "song": "Run It" },
+  { "file": "audio/simple/library/seven-nation-army.mp3",   "song": "Seven Nation Army" },
+  { "file": "audio/simple/library/thick-of-it.mp3",         "song": "Thick Of It" },
+  { "file": "audio/simple/library/trend-setter.mp3",        "song": "Trend Setter" },
+  { "file": "audio/simple/library/tsunami.mp3",             "song": "Tsunami" },
+  { "file": "audio/simple/library/we-on-go.mp3",            "song": "We On Go" }
+]

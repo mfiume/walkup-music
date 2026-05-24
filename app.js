@@ -119,16 +119,22 @@
   async function init() {
     await clearServiceWorkers();
 
-    const resp = await fetch('roster.json');
-    roster = await resp.json();
+    // Roster (who) and library (what) are loaded in parallel. Roster lists
+    // each player with their default walkup file path; library.json is the
+    // single source of truth for song titles + the menu of choices any
+    // player can pick from in Settings.
+    const [rosterResp, libraryResp] = await Promise.all([
+      fetch('roster.json'),
+      fetch('audio/simple/library.json'),
+    ]);
+    roster = await rosterResp.json();
     roster.sort((a, b) => a.number - b.number);
+    songLibrary = await libraryResp.json();
 
-    // Snapshot each player's default + alternates, build the shared song
-    // library (every default + every alternate), then apply any saved
-    // per-player song overrides so the rest of the app just reads
+    // Snapshot each player's default walkup file + title, then apply any
+    // saved per-player song overrides so the rest of the app just reads
     // player.walkup / player.song without caring which option is selected.
     snapshotSongDefaults();
-    buildSongLibrary();
     applySongOverrides();
 
     const saved = localStorage.getItem('walkup-simple-lineup');
@@ -296,61 +302,26 @@
   }
 
   // === Per-player song overrides ===
+  // The library (loaded from audio/simple/library.json) is the single source
+  // of truth for songs. Each library entry: { file, song }. Players have a
+  // default walkup file path in roster.json; the displayed song title is
+  // looked up from the library so roster + library can't drift.
+  let songLibrary = [];
+
+  function findLibraryEntry(file) {
+    return songLibrary.find(s => s.file === file) || null;
+  }
+
   // Each player gets a `_defaultWalkup` / `_defaultSong` snapshot taken
   // before any override is applied, so we can always show / switch back
   // to their original.
   function snapshotSongDefaults() {
     roster.forEach(p => {
       p._defaultWalkup = p.walkup;
-      p._defaultSong = p.song || '';
-      // Normalise alternates: array of { file, song }
-      if (!Array.isArray(p.alternates)) p.alternates = [];
+      const entry = findLibraryEntry(p.walkup);
+      p._defaultSong = entry ? entry.song : '(no title)';
+      p.song = p._defaultSong;
     });
-  }
-
-  // The song library is a flat list of every available walk-up song:
-  // each player's default plus any `alternates`. Built once at init from
-  // the roster. Any player can pick any library entry.
-  //
-  //   Item shape: {
-  //     file: string,            // path used as audio src and stable id
-  //     song: string,            // display title
-  //     defaultForNumber: ?int,  // present when this is a player's default
-  //     defaultForName:   ?str,  // matching player's first name
-  //   }
-  let songLibrary = [];
-
-  function buildSongLibrary() {
-    songLibrary = [];
-    const seen = new Set();
-    // Defaults first, in roster order.
-    roster.forEach(p => {
-      if (!p._defaultWalkup || seen.has(p._defaultWalkup)) return;
-      seen.add(p._defaultWalkup);
-      songLibrary.push({
-        file: p._defaultWalkup,
-        song: p._defaultSong || '(no title)',
-        defaultForNumber: p.number,
-        defaultForName: p.firstName,
-      });
-    });
-    // Then everyone's alternates.
-    roster.forEach(p => {
-      (p.alternates || []).forEach(a => {
-        if (!a.file || seen.has(a.file)) return;
-        seen.add(a.file);
-        songLibrary.push({
-          file: a.file,
-          song: a.song || '(no title)',
-          defaultForNumber: null,
-          defaultForName: null,
-        });
-      });
-    });
-  }
-
-  function findLibraryEntry(file) {
-    return songLibrary.find(s => s.file === file) || null;
   }
 
   // Read playerSongOverrides and mutate each player's walkup + song fields
