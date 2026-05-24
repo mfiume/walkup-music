@@ -1,15 +1,20 @@
 import Foundation
 
-/// A roster entry. The JSON paths point at files bundled inside the app
-/// (`audio/simple/announcements/<name>.wav`, `audio/simple/walkups-clean/<name>.mp3`).
+/// A roster entry. The JSON paths point at files bundled inside the app:
+/// announcements stay player-keyed (`audio/simple/announcements/<name>.wav`),
+/// walk-up music lives in a shared library by song slug
+/// (`audio/simple/library/<song-slug>.mp3`) and is catalogued in
+/// `audio/simple/library.json`.
 struct Player: Codable, Identifiable, Hashable {
     let number: Int
     let firstName: String
     let lastName: String
     /// Path-style identifier used in roster.json, e.g. "audio/simple/announcements/adrian.wav".
     let announcement: String?
-    /// Path-style identifier used in roster.json, e.g. "audio/simple/walkups-clean/adrian.mp3".
+    /// Library file path, e.g. "audio/simple/library/fair-trade.mp3". This is the
+    /// player's *default*; users can swap to any other library entry in Settings.
     let walkup: String?
+    /// Optional display title. If absent, look it up from library.json by `walkup`.
     let song: String?
 
     var id: Int { number }

@@ -29,7 +29,7 @@ enum RosterLoader {
         // subdirectory layout is preserved inside the bundle.
         let subdirs = [
             "Audio/Announcements",
-            "Audio/Walkups",
+            "Audio/Library",
             "Audio/TeamIntro",
             "Audio"
         ]

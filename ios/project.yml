@@ -23,7 +23,7 @@ targets:
     #   .swift -> Sources phase
     #   roster.json, Assets.xcassets, Audio folder -> Resources phase
     # We use `type: folder` on the Audio directory so its subfolders
-    # (Announcements / Walkups / TeamIntro) are preserved at runtime, which
+    # (Announcements / Library / TeamIntro) are preserved at runtime, which
     # is what RosterLoader.bundleURL(forResource:) expects.
     sources:
       - path: BloordaleWalkup/Sources

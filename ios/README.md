@@ -81,9 +81,10 @@ xcodegen generate
 
 The `Resources/Audio/` folder is added to the Xcode project as a **folder
 reference** (`type: folder` in `project.yml`), so the subdirectory layout
-(`Audio/Announcements/<name>.wav`, `Audio/Walkups/<name>.mp3`,
+(`Audio/Announcements/<name>.wav`, `Audio/Library/<song-slug>.mp3`,
 `Audio/TeamIntro/team-intro.wav`) is preserved at runtime. `RosterLoader`
-looks them up by filename + subdirectory.
+looks them up by filename + subdirectory. The list of walk-up songs is
+catalogued in `Audio/library.json` (parallel to the web build).
 
 ## Background audio
 
