@@ -11,8 +11,9 @@
   'use strict';
 
   // === Config ===
-  const WALKUP_DURATION_S = 30;     // how long the song plays before fading
-  const FADE_OUT_S = 2.5;           // fade out at end of walk-up
+  const WALKUP_DURATION_S = 30;     // play-through cap for any clip
+  const FADE_IN_S = 0.3;            // soft fade-in when music starts (never cuts)
+  const FADE_OUT_S = 1.5;           // soft fade-out at the end of any clip
   const OVERLAP_S = 1.2;            // start music this many seconds before announcement ends
   const MUSIC_DUCKED_VOL = 0.35;    // music volume while announcement still playing
   const MUSIC_FULL_VOL = 1.0;
@@ -954,7 +955,7 @@
       walkupAudio.src = player.walkup;
       try { walkupAudio.load(); } catch (_) {}
     }
-    walkupAudio.volume = MUSIC_DUCKED_VOL;
+    walkupAudio.volume = 0;        // every music entry fades in (see startWalkupAudio)
     walkupAudio.currentTime = 0;
 
     if (player.announcement) {
@@ -967,11 +968,9 @@
       announcementAudio.currentTime = 0;
       announcementAudio.play().then(() => {
         if (playbackMode === 'overlap') {
-          // Music plays the entire time, ducked underneath the announcement.
-          // It started loading above; kick off playback now from t=0.
-          walkupAudio.currentTime = 0;
-          walkupAudio.volume = MUSIC_DUCKED_VOL;
-          walkupAudio.play().catch(() => {});
+          // Music plays the entire time, ducked under the announcement.
+          // Soft fade-in from 0 to ducked so it doesn't cut in.
+          startWalkupAudio(MUSIC_DUCKED_VOL);
         } else {
           scheduleAnnouncementOverlap();
         }
@@ -1010,11 +1009,10 @@
   function beginMusicOverlap() {
     if (playbackPhase !== 'announcement') return;
     if (!walkupAudio.src) return;
-
-    // Music starts ducked under the tail of the announcement. Announcement
-    // continues at full volume until its file ends; no soft fade.
-    walkupAudio.volume = MUSIC_DUCKED_VOL;
-    walkupAudio.play().catch(() => {});
+    // Music starts ducked under the tail of the announcement, fading in
+    // from 0 so the entry isn't a hard cut. Announcement continues at full
+    // volume.
+    startWalkupAudio(MUSIC_DUCKED_VOL);
   }
 
   function onAnnouncementEnded() {
@@ -1029,11 +1027,24 @@
 
   function startWalkup() {
     playbackPhase = 'walkup';
-    walkupAudio.volume = MUSIC_FULL_VOL;
-    walkupAudio.play().catch(err => {
+    // No announcement: fade music in from 0 to full so the song doesn't
+    // hard-cut on entry.
+    startWalkupAudio(MUSIC_FULL_VOL);
+    armWalkupFadeOut();
+  }
+
+  // Begin (or restart) the walk-up music with a soft fade-in to `targetVol`.
+  // Used everywhere we'd normally do `walkupAudio.play()` at a fixed volume,
+  // so every entry into the music gets the same gentle ramp instead of a cut.
+  function startWalkupAudio(targetVol) {
+    // Cancel any in-flight volume ramp so we always start from 0 cleanly.
+    cancelFades();
+    walkupAudio.volume = 0;
+    const p = walkupAudio.play();
+    if (p && p.catch) p.catch((err) => {
       console.warn('Walk-up play failed', err);
     });
-    armWalkupFadeOut();
+    fade(walkupAudio, 0, targetVol, FADE_IN_S * 1000);
   }
 
   // The play-through length is the lesser of WALKUP_DURATION_S and the audio
@@ -1094,24 +1105,21 @@
     const arm = () => {
       clearTimeout(walkupFadeTimeout);
       const total = effectiveWalkupTotal();
-      // Only schedule a fade-out if the song is longer than our cap. For short
-      // clips (≤ cap), let them play to their natural end via the 'ended' event.
-      if (!isFinite(walkupAudio.duration) || walkupAudio.duration > WALKUP_DURATION_S) {
-        // Schedule by how much music is left, not by the cap. This lands the
-        // fade right at the cap regardless of how far in we already are
-        // (overlap mode starts the music at t=0, so by walkup phase the music
-        // is already several seconds in).
-        const fadeStartMs = Math.max(
-          0,
-          (total - FADE_OUT_S - walkupAudio.currentTime) * 1000
-        );
-        walkupFadeTimeout = setTimeout(() => {
-          fade(walkupAudio, walkupAudio.volume, 0, FADE_OUT_S * 1000, () => {
-            walkupAudio.pause();
-            onWalkupEnded();
-          });
-        }, fadeStartMs);
-      }
+      // Always schedule a soft fade-out so the song never cuts at the end —
+      // whether it's a short 10s library clip or a longer track being capped
+      // at WALKUP_DURATION_S. Schedule by how much music is left from "now"
+      // (overlap mode starts the music at t=0, so by walkup phase the music
+      // is already several seconds in).
+      const fadeStartMs = Math.max(
+        0,
+        (total - FADE_OUT_S - walkupAudio.currentTime) * 1000
+      );
+      walkupFadeTimeout = setTimeout(() => {
+        fade(walkupAudio, walkupAudio.volume, 0, FADE_OUT_S * 1000, () => {
+          walkupAudio.pause();
+          onWalkupEnded();
+        });
+      }, fadeStartMs);
       // Refresh the displayed total now that we know the real duration
       updatePlaybackBar();
     };
