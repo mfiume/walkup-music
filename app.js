@@ -334,22 +334,25 @@
     return songLibrary.find(s => s.file === file) || null;
   }
 
-  // Each player gets a `_defaultWalkup` / `_defaultSong` snapshot taken
-  // before any override is applied, so we can always show / switch back
-  // to their original.
+  // Each player gets a `_defaultWalkup` / `_defaultSong` / `_defaultArtist`
+  // snapshot taken before any override is applied, so we can always show /
+  // switch back to their original.
   function snapshotSongDefaults() {
     roster.forEach(p => {
       p._defaultWalkup = p.walkup;
       const entry = findLibraryEntry(p.walkup);
       p._defaultSong = entry ? entry.song : '(no title)';
+      p._defaultArtist = entry ? (entry.artist || '') : '';
       p.song = p._defaultSong;
+      p.artist = p._defaultArtist;
     });
   }
 
-  // Read playerSongOverrides and mutate each player's walkup + song fields
-  // to match the selected library entry. Invalid entries (file no longer in
-  // the library) silently fall back to the default. A Deezer assignment
-  // (if any) takes precedence and is applied on top via applyDeezerSongs.
+  // Read playerSongOverrides and mutate each player's walkup + song + artist
+  // fields to match the selected library entry. Invalid entries (file no
+  // longer in the library) silently fall back to the default. A Deezer
+  // assignment (if any) takes precedence and is applied on top via
+  // applyDeezerSongs.
   function applySongOverrides() {
     roster.forEach(p => {
       p._deezerTrack = null;
@@ -357,14 +360,17 @@
       if (!sel || sel === p._defaultWalkup) {
         p.walkup = p._defaultWalkup;
         p.song = p._defaultSong;
+        p.artist = p._defaultArtist;
       } else {
         const lib = findLibraryEntry(sel);
         if (lib) {
           p.walkup = lib.file;
           p.song = lib.song;
+          p.artist = lib.artist || '';
         } else {
           p.walkup = p._defaultWalkup;
           p.song = p._defaultSong;
+          p.artist = p._defaultArtist;
         }
       }
     });
@@ -383,7 +389,8 @@
       const url = playerDeezerBlobUrls[p.number];
       if (url) {
         p.walkup = url;
-        p.song = `${entry.title} — ${entry.artist}`;
+        p.song = entry.title;
+        p.artist = entry.artist || '';
         p._deezerTrack = entry;
       } else {
         // Marker is present but the blob hasn't been hydrated yet (or the
@@ -392,6 +399,16 @@
         p._deezerTrack = { ...entry, _missing: true };
       }
     });
+  }
+
+  // Single source of truth for how we display "Title · Artist" inline. If a
+  // player has no artist we just show the title (or whatever song label fits).
+  function songLine(player) {
+    if (!player) return '';
+    const t = player.song || '';
+    const a = player.artist || '';
+    if (t && a) return `${t} · ${a}`;
+    return t || a || '';
   }
 
   // === Deezer integration ===
@@ -611,12 +628,13 @@
       summary.className = 'song-player-head';
       const dz = playerDeezerSongs[p.number];
       const isCustom = (!dz && playerSongOverrides[p.number] && playerSongOverrides[p.number] !== p._defaultWalkup) || !!dz;
+      const currentLine = songLine(p) || p._defaultSong || '(no song)';
       summary.innerHTML = `
         <span class="lineup-num">#${p.number}</span>
         <span class="song-player-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
         <span class="song-player-current ${isCustom ? 'is-custom' : ''}">
           ${dz ? '<span class="song-player-deezer-chip" title="From Deezer">DZ</span>' : ''}
-          ${escapeHtml(p.song || p._defaultSong || '(no song)')}
+          ${escapeHtml(currentLine)}
           ${isCustom ? '<span class="song-player-customdot" title="Custom selection"></span>' : ''}
         </span>
         <span class="song-player-caret" aria-hidden="true">
@@ -699,12 +717,18 @@
         row.dataset.file = lib.file;
 
         const tagHtml = isOwnDefault ? '<span class="song-opt-tag">Default</span>' : '';
+        const artistHtml = lib.artist
+          ? `<span class="song-opt-sub">${escapeHtml(lib.artist)}</span>`
+          : '';
 
         row.innerHTML = `
           <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(lib.song)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
           </button>
-          <span class="song-opt-title">${escapeHtml(lib.song)}</span>
+          <span class="song-opt-title">
+            <span class="song-opt-title-line">${escapeHtml(lib.song)}</span>
+            ${artistHtml}
+          </span>
           ${tagHtml}
           <span class="song-opt-check" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -970,7 +994,7 @@
         <span class="roster-num">#${p.number}</span>
         <span class="roster-info">
           <span class="roster-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
-          <span class="roster-song">${escapeHtml(p.song || '')}</span>
+          <span class="roster-song">${escapeHtml(songLine(p))}</span>
         </span>
         <span class="roster-play" aria-hidden="true">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
@@ -1015,7 +1039,7 @@
         <span class="lineup-num">#${p.number}</span>
         <span class="lineup-info">
           <span class="lineup-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
-          <span class="lineup-song">${escapeHtml(p.song || '')}</span>
+          <span class="lineup-song">${escapeHtml(songLine(p))}</span>
         </span>
         <button class="lineup-play" aria-label="Play">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
@@ -1126,7 +1150,7 @@
         <span class="lineup-num">#${p.number}</span>
         <span class="lineup-info">
           <span class="lineup-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
-          <span class="lineup-song">${escapeHtml(p.song || '')}</span>
+          <span class="lineup-song">${escapeHtml(songLine(p))}</span>
         </span>
         <span class="add-icon">+</span>
       `;
@@ -1323,8 +1347,9 @@
 
     npNumber.textContent = `#${currentPlayer.number}`;
     npName.textContent = `${currentPlayer.firstName} ${currentPlayer.lastName}`;
-    if (currentPlayer.song) {
-      npSongName.textContent = currentPlayer.song;
+    const npLine = songLine(currentPlayer);
+    if (npLine) {
+      npSongName.textContent = npLine;
       npSongName.classList.remove('hidden');
     } else {
       npSongName.classList.add('hidden');
@@ -1693,8 +1718,9 @@
     }
     playbackNumber.textContent = `#${currentPlayer.number}`;
     playbackName.textContent = `${currentPlayer.firstName} ${currentPlayer.lastName}`;
-    if (currentPlayer.song) {
-      playbackSongName.textContent = currentPlayer.song;
+    const barLine = songLine(currentPlayer);
+    if (barLine) {
+      playbackSongName.textContent = barLine;
       playbackSongName.classList.remove('hidden');
     } else {
       playbackSongName.classList.add('hidden');
@@ -1818,7 +1844,7 @@
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
-        artist: currentPlayer.song || 'Walk-Up',
+        artist: songLine(currentPlayer) || 'Walk-Up',
         album: 'Bloordale Bombers',
         artwork: [
           { src: 'icon-192.png?v=2', sizes: '192x192', type: 'image/png' },
