@@ -12,6 +12,9 @@
 
   // === Config ===
   const WALKUP_DURATION_S = 30;     // play-through cap for any clip
+  // Deezer previews are 30s; umpires care about ten-second walk-ups so we
+  // hard-cap any Deezer-sourced clip to this many seconds.
+  const DEEZER_CLIP_DURATION_S = 10;
   const FADE_IN_S = 0.3;            // soft fade-in when music starts (never cuts)
   const FADE_OUT_S = 1.5;           // soft fade-out at the end of any clip
   const OVERLAP_S = 1.2;            // start music this many seconds before announcement ends
@@ -42,6 +45,21 @@
     try { return JSON.parse(localStorage.getItem('walkup-simple-songs') || '{}') || {}; }
     catch (_) { return {}; }
   })();
+
+  // Per-player Deezer assignment:
+  //   { [playerNumber]: { trackId, title, artist, artUrl, previewUrl } }
+  // The track's MP3 preview is cached as a Blob in IndexedDB keyed by trackId,
+  // so once a player has been assigned a Deezer song the app can play it
+  // offline. Deezer wins over playerSongOverrides — if a player has a Deezer
+  // track assigned, their walk-up comes from Deezer, not the library.
+  let playerDeezerSongs = (() => {
+    try { return JSON.parse(localStorage.getItem('walkup-simple-deezer') || '{}') || {}; }
+    catch (_) { return {}; }
+  })();
+
+  // Object URLs created at runtime so we can revoke them on reassign. Map of
+  // playerNumber → blob URL.
+  const playerDeezerBlobUrls = {};
 
   // Single audio element used for previewing alternates in the Settings tab,
   // separate from the walk-up / announcement / team-intro elements.
@@ -132,10 +150,12 @@
     roster.sort((a, b) => a.number - b.number);
     songLibrary = await libraryResp.json();
 
-    // Snapshot each player's default walkup file + title, then apply any
-    // saved per-player song overrides so the rest of the app just reads
-    // player.walkup / player.song without caring which option is selected.
+    // Snapshot each player's default walkup file + title, then hydrate
+    // any cached Deezer blobs out of IndexedDB before applying overrides
+    // so the rest of the app just reads player.walkup / player.song
+    // without caring which source (library / Deezer / default) is selected.
     snapshotSongDefaults();
+    try { await hydrateDeezerBlobs(); } catch (_) { /* ignore */ }
     applySongOverrides();
 
     const saved = localStorage.getItem('walkup-simple-lineup');
@@ -154,6 +174,7 @@
     bindSettings();
     bindTeamIntro();
     bindMediaSession();
+    bindDeezerModal();
 
     // If we have a lineup, point at the leadoff batter so the bar shows
     // "Up Next: batter 1" right away. Just tap Play to start the game.
@@ -327,24 +348,233 @@
 
   // Read playerSongOverrides and mutate each player's walkup + song fields
   // to match the selected library entry. Invalid entries (file no longer in
-  // the library) silently fall back to the default.
+  // the library) silently fall back to the default. A Deezer assignment
+  // (if any) takes precedence and is applied on top via applyDeezerSongs.
   function applySongOverrides() {
     roster.forEach(p => {
+      p._deezerTrack = null;
       const sel = playerSongOverrides[p.number];
       if (!sel || sel === p._defaultWalkup) {
         p.walkup = p._defaultWalkup;
         p.song = p._defaultSong;
-        return;
-      }
-      const lib = findLibraryEntry(sel);
-      if (lib) {
-        p.walkup = lib.file;
-        p.song = lib.song;
       } else {
-        p.walkup = p._defaultWalkup;
-        p.song = p._defaultSong;
+        const lib = findLibraryEntry(sel);
+        if (lib) {
+          p.walkup = lib.file;
+          p.song = lib.song;
+        } else {
+          p.walkup = p._defaultWalkup;
+          p.song = p._defaultSong;
+        }
       }
     });
+    applyDeezerSongs();
+  }
+
+  // For each player with a saved Deezer assignment + cached blob, set their
+  // walkup to the local object URL so the rest of the app plays it like any
+  // other clip. If the blob is missing (e.g. IDB cleared, fresh install of the
+  // PWA on a new device), we keep the library/default and surface a "redownload"
+  // affordance in the settings UI.
+  function applyDeezerSongs() {
+    roster.forEach(p => {
+      const entry = playerDeezerSongs[p.number];
+      if (!entry) return;
+      const url = playerDeezerBlobUrls[p.number];
+      if (url) {
+        p.walkup = url;
+        p.song = `${entry.title} — ${entry.artist}`;
+        p._deezerTrack = entry;
+      } else {
+        // Marker is present but the blob hasn't been hydrated yet (or the
+        // download failed). Keep the player on their library/default song;
+        // the settings card will offer a one-tap re-fetch.
+        p._deezerTrack = { ...entry, _missing: true };
+      }
+    });
+  }
+
+  // === Deezer integration ===
+  // Search Deezer's public API for a song, preview it inline, and on "Use"
+  // download the 30s MP3 preview into IndexedDB so it plays as the player's
+  // walk-up. The clip is hard-capped at DEEZER_CLIP_DURATION_S (10s) so we
+  // don't outstay our welcome with the umpires.
+  const DEEZER_DB_NAME = 'walkup-simple-deezer';
+  const DEEZER_DB_VERSION = 1;
+  const DEEZER_STORE = 'audio';
+  let deezerDbPromise = null;
+
+  function openDeezerDb() {
+    if (deezerDbPromise) return deezerDbPromise;
+    deezerDbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DEEZER_DB_NAME, DEEZER_DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DEEZER_STORE)) {
+          db.createObjectStore(DEEZER_STORE);  // keyed by trackId
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return deezerDbPromise;
+  }
+
+  async function idbGetBlob(trackId) {
+    const db = await openDeezerDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DEEZER_STORE, 'readonly');
+      const req = tx.objectStore(DEEZER_STORE).get(String(trackId));
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbPutBlob(trackId, blob) {
+    const db = await openDeezerDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DEEZER_STORE, 'readwrite');
+      tx.objectStore(DEEZER_STORE).put(blob, String(trackId));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function idbDeleteBlob(trackId) {
+    const db = await openDeezerDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DEEZER_STORE, 'readwrite');
+      tx.objectStore(DEEZER_STORE).delete(String(trackId));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // Deezer's REST API doesn't send CORS headers on the search endpoint, but it
+  // supports JSONP. We inject a <script> with a callback name and wait for it
+  // to fire. The preview MP3 CDN does send CORS so we fetch() that as a Blob.
+  function deezerJsonp(url, timeoutMs = 8000) {
+    return new Promise((resolve, reject) => {
+      const cb = '__dz_' + Math.random().toString(36).slice(2);
+      const script = document.createElement('script');
+      const timer = setTimeout(() => { cleanup(); reject(new Error('Deezer timeout')); }, timeoutMs);
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cb]; } catch (_) { window[cb] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cb] = (data) => { cleanup(); resolve(data); };
+      script.onerror = () => { cleanup(); reject(new Error('Deezer load failed')); };
+      script.src = url + (url.includes('?') ? '&' : '?') + 'output=jsonp&callback=' + cb;
+      document.head.appendChild(script);
+    });
+  }
+
+  async function searchDeezer(q) {
+    if (!q || q.trim().length < 2) return [];
+    const url = `https://api.deezer.com/search?q=${encodeURIComponent(q.trim())}&limit=15`;
+    const data = await deezerJsonp(url);
+    return (data && Array.isArray(data.data)) ? data.data : [];
+  }
+
+  // Hydrate all saved Deezer assignments at startup: pull each cached blob out
+  // of IDB and stash an object URL we'll use as the player's walkup src.
+  async function hydrateDeezerBlobs() {
+    const nums = Object.keys(playerDeezerSongs).map(n => Number(n));
+    await Promise.all(nums.map(async (num) => {
+      const entry = playerDeezerSongs[num];
+      if (!entry || !entry.trackId) return;
+      try {
+        const blob = await idbGetBlob(entry.trackId);
+        if (blob) playerDeezerBlobUrls[num] = URL.createObjectURL(blob);
+      } catch (_) { /* ignore — falls back to library/default */ }
+    }));
+  }
+
+  // Download and persist a Deezer preview, then mark it as this player's
+  // walk-up. Old assignments (and their blobs/object URLs) are cleaned up.
+  async function assignDeezerTrackToPlayer(playerNumber, track) {
+    if (!track || !track.preview) throw new Error('Track has no preview URL');
+
+    // Clean up any prior assignment for this player first.
+    await clearDeezerForPlayer(playerNumber, { skipRender: true });
+
+    const res = await fetch(track.preview);
+    if (!res.ok) throw new Error('Failed to fetch preview');
+    const blob = await res.blob();
+
+    const trackId = String(track.id);
+    await idbPutBlob(trackId, blob);
+    const url = URL.createObjectURL(blob);
+    playerDeezerBlobUrls[playerNumber] = url;
+
+    const entry = {
+      trackId,
+      title: track.title_short || track.title || 'Untitled',
+      artist: (track.artist && track.artist.name) || 'Unknown',
+      artUrl: (track.album && (track.album.cover_medium || track.album.cover)) || '',
+      previewUrl: track.preview,
+    };
+    playerDeezerSongs[playerNumber] = entry;
+    localStorage.setItem('walkup-simple-deezer', JSON.stringify(playerDeezerSongs));
+
+    // Picking a Deezer track also clears any library override for this
+    // player so the two sources stay mutually exclusive.
+    if (playerSongOverrides[playerNumber]) {
+      delete playerSongOverrides[playerNumber];
+      localStorage.setItem('walkup-simple-songs', JSON.stringify(playerSongOverrides));
+    }
+
+    applySongOverrides();
+    renderLineup();
+    renderRoster();
+    renderAvailable();
+    renderSongOptionsList();
+
+    if (currentPlayer && currentPlayer.number === playerNumber) {
+      const p = roster.find(x => x.number === playerNumber);
+      if (p) {
+        currentPlayer = p;
+        updatePlaybackBar();
+        updateMediaSession();
+        if (!playbackPhase) preloadForPlayer(currentPlayer);
+      }
+    }
+  }
+
+  async function clearDeezerForPlayer(playerNumber, opts = {}) {
+    const { skipRender = false } = opts;
+    // Do the synchronous bookkeeping first so any caller that fires this
+    // and then immediately calls applySongOverrides() sees the cleared state.
+    const prior = playerDeezerSongs[playerNumber];
+    const url = playerDeezerBlobUrls[playerNumber];
+    if (url) {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      delete playerDeezerBlobUrls[playerNumber];
+    }
+    if (playerDeezerSongs[playerNumber]) {
+      delete playerDeezerSongs[playerNumber];
+      localStorage.setItem('walkup-simple-deezer', JSON.stringify(playerDeezerSongs));
+    }
+    // Then drop the cached blob (best-effort, runs after we've already updated
+    // in-memory state).
+    if (prior && prior.trackId) {
+      try { await idbDeleteBlob(prior.trackId); } catch (_) {}
+    }
+    if (!skipRender) {
+      applySongOverrides();
+      renderLineup();
+      renderRoster();
+      renderAvailable();
+      renderSongOptionsList();
+      if (currentPlayer && currentPlayer.number === playerNumber) {
+        const p = roster.find(x => x.number === playerNumber);
+        if (p) {
+          currentPlayer = p;
+          updatePlaybackBar();
+          updateMediaSession();
+          if (!playbackPhase) preloadForPlayer(currentPlayer);
+        }
+      }
+    }
   }
 
   // Per-player accordion: each player gets a <details> row. Collapsed shows
@@ -379,11 +609,13 @@
 
       const summary = document.createElement('summary');
       summary.className = 'song-player-head';
-      const isCustom = playerSongOverrides[p.number] && playerSongOverrides[p.number] !== p._defaultWalkup;
+      const dz = playerDeezerSongs[p.number];
+      const isCustom = (!dz && playerSongOverrides[p.number] && playerSongOverrides[p.number] !== p._defaultWalkup) || !!dz;
       summary.innerHTML = `
         <span class="lineup-num">#${p.number}</span>
         <span class="song-player-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
         <span class="song-player-current ${isCustom ? 'is-custom' : ''}">
+          ${dz ? '<span class="song-player-deezer-chip" title="From Deezer">DZ</span>' : ''}
           ${escapeHtml(p.song || p._defaultSong || '(no song)')}
           ${isCustom ? '<span class="song-player-customdot" title="Custom selection"></span>' : ''}
         </span>
@@ -395,6 +627,63 @@
 
       const opts = document.createElement('div');
       opts.className = 'song-opts';
+
+      // === Deezer row(s) ===
+      // Always show a "Search Deezer" entry. If this player already has a
+      // Deezer track assigned, show it as the active row above the library
+      // with a Remove affordance.
+      if (dz) {
+        const dzRow = document.createElement('div');
+        dzRow.className = 'song-opt song-opt-deezer active';
+        dzRow.setAttribute('role', 'radio');
+        dzRow.setAttribute('aria-checked', 'true');
+        dzRow.innerHTML = `
+          <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(dz.title)}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          </button>
+          ${dz.artUrl ? `<img class="song-opt-art" src="${escapeHtml(dz.artUrl)}" alt="" loading="lazy">` : ''}
+          <span class="song-opt-title">
+            <span class="song-opt-title-line">${escapeHtml(dz.title)}</span>
+            <span class="song-opt-sub">${escapeHtml(dz.artist)}</span>
+          </span>
+          <span class="song-opt-tag">Deezer</span>
+          <button class="song-opt-remove" type="button" aria-label="Remove Deezer song" title="Remove">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        `;
+        const dzPreviewBtn = dzRow.querySelector('.song-opt-preview');
+        const dzPreviewSrc = playerDeezerBlobUrls[p.number] || dz.previewUrl;
+        dzPreviewBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          togglePreview(dzPreviewSrc, dzPreviewBtn);
+        });
+        dzRow.querySelector('.song-opt-remove').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try { await clearDeezerForPlayer(p.number); }
+          catch (err) { console.warn('Clear Deezer failed', err); }
+        });
+        opts.appendChild(dzRow);
+      }
+
+      const searchRow = document.createElement('div');
+      searchRow.className = 'song-opt song-opt-deezer-search';
+      searchRow.setAttribute('role', 'button');
+      searchRow.innerHTML = `
+        <span class="song-opt-deezer-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>
+        </span>
+        <span class="song-opt-title">${dz ? 'Change Deezer song…' : 'Search Deezer…'}</span>
+        <span class="song-opt-tag muted">Online</span>
+      `;
+      searchRow.addEventListener('click', () => openDeezerModal(p));
+      opts.appendChild(searchRow);
+
+      // Visual divider between Deezer + library
+      const divider = document.createElement('div');
+      divider.className = 'song-opts-divider';
+      divider.innerHTML = '<span>Library</span>';
+      opts.appendChild(divider);
+
       songLibrary.forEach(lib => {
         const isActive = p.walkup === lib.file;
         // 'Default' tag shows only on this player's own default song,
@@ -443,6 +732,12 @@
   function selectSongForPlayer(playerNumber, file) {
     const p = roster.find(x => x.number === playerNumber);
     if (!p) return;
+    // Picking a library entry also clears any Deezer assignment so the
+    // two sources stay mutually exclusive. Fire-and-forget — the local
+    // state is updated synchronously below.
+    if (playerDeezerSongs[playerNumber]) {
+      clearDeezerForPlayer(playerNumber, { skipRender: true }).catch(() => {});
+    }
     if (file === p._defaultWalkup) {
       delete playerSongOverrides[playerNumber];
     } else {
@@ -494,6 +789,148 @@
       b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
     });
   });
+
+  // === Deezer search modal ===
+  // Owns its own previewAudio-like element so the modal's preview state is
+  // independent of the per-row library previews.
+  const deezerPreview = new Audio();
+  deezerPreview.preload = 'auto';
+  deezerPreview.addEventListener('ended', () => {
+    setDeezerPreviewPlayingBtn(null);
+  });
+  let deezerModalPlayer = null;       // player object the modal was opened for
+  let deezerSearchSeq = 0;            // debounce / stale-response guard
+  let deezerSearchTimer = null;
+  let lastDeezerResults = [];
+
+  function openDeezerModal(player) {
+    deezerModalPlayer = player;
+    const modal = document.getElementById('deezer-modal');
+    const label = document.getElementById('deezer-modal-subtitle');
+    const input = document.getElementById('deezer-search-input');
+    const results = document.getElementById('deezer-results');
+    if (!modal || !input || !results) return;
+    if (label) label.textContent = `For #${player.number} ${player.firstName} ${player.lastName}`;
+    input.value = '';
+    results.innerHTML = '<div class="deezer-empty">Search for any song or artist above.</div>';
+    modal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    setTimeout(() => { try { input.focus(); } catch (_) {} }, 30);
+  }
+
+  function closeDeezerModal() {
+    const modal = document.getElementById('deezer-modal');
+    if (modal) modal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+    try { deezerPreview.pause(); deezerPreview.currentTime = 0; } catch (_) {}
+    setDeezerPreviewPlayingBtn(null);
+    deezerModalPlayer = null;
+  }
+
+  function setDeezerPreviewPlayingBtn(btnOrNull) {
+    document.querySelectorAll('.deezer-result-play.playing').forEach(b => {
+      b.classList.remove('playing');
+      b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+    });
+    if (btnOrNull) {
+      btnOrNull.classList.add('playing');
+      btnOrNull.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>';
+    }
+  }
+
+  function toggleDeezerPreview(track, btn) {
+    const sameBtn = btn.classList.contains('playing');
+    try { deezerPreview.pause(); deezerPreview.currentTime = 0; } catch (_) {}
+    setDeezerPreviewPlayingBtn(null);
+    if (sameBtn) return;
+    deezerPreview.src = track.preview;
+    setDeezerPreviewPlayingBtn(btn);
+    deezerPreview.play().catch(() => setDeezerPreviewPlayingBtn(null));
+  }
+
+  function renderDeezerResults(tracks) {
+    const host = document.getElementById('deezer-results');
+    if (!host) return;
+    host.innerHTML = '';
+    lastDeezerResults = tracks || [];
+    if (!tracks || tracks.length === 0) {
+      host.innerHTML = '<div class="deezer-empty">No results.</div>';
+      return;
+    }
+    tracks.forEach(t => {
+      if (!t.preview) return;  // need a previewable track
+      const art = (t.album && (t.album.cover_medium || t.album.cover)) || '';
+      const row = document.createElement('div');
+      row.className = 'deezer-result';
+      row.innerHTML = `
+        <button class="deezer-result-play" type="button" aria-label="Preview ${escapeHtml(t.title || '')}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        </button>
+        ${art ? `<img class="deezer-result-art" src="${escapeHtml(art)}" alt="" loading="lazy">` : '<span class="deezer-result-art placeholder"></span>'}
+        <span class="deezer-result-info">
+          <span class="deezer-result-title">${escapeHtml(t.title_short || t.title || '')}</span>
+          <span class="deezer-result-artist">${escapeHtml((t.artist && t.artist.name) || '')}</span>
+        </span>
+        <button class="deezer-result-use" type="button">Use</button>
+      `;
+      row.querySelector('.deezer-result-play').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDeezerPreview(t, e.currentTarget);
+      });
+      row.querySelector('.deezer-result-use').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const useBtn = e.currentTarget;
+        if (!deezerModalPlayer) return;
+        useBtn.disabled = true;
+        useBtn.textContent = 'Saving…';
+        try {
+          await assignDeezerTrackToPlayer(deezerModalPlayer.number, t);
+          closeDeezerModal();
+        } catch (err) {
+          console.warn('Deezer assign failed', err);
+          useBtn.disabled = false;
+          useBtn.textContent = 'Try again';
+        }
+      });
+      host.appendChild(row);
+    });
+  }
+
+  function bindDeezerModal() {
+    const modal = document.getElementById('deezer-modal');
+    if (!modal) return;
+    const closeBtn = document.getElementById('deezer-close');
+    const backdrop = document.getElementById('deezer-modal-backdrop');
+    const input = document.getElementById('deezer-search-input');
+    if (closeBtn) closeBtn.addEventListener('click', closeDeezerModal);
+    if (backdrop) backdrop.addEventListener('click', closeDeezerModal);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeDeezerModal();
+    });
+    if (input) {
+      input.addEventListener('input', () => {
+        clearTimeout(deezerSearchTimer);
+        const q = input.value.trim();
+        const host = document.getElementById('deezer-results');
+        if (q.length < 2) {
+          if (host) host.innerHTML = '<div class="deezer-empty">Search for any song or artist above.</div>';
+          return;
+        }
+        if (host) host.innerHTML = '<div class="deezer-empty">Searching…</div>';
+        const mySeq = ++deezerSearchSeq;
+        deezerSearchTimer = setTimeout(async () => {
+          try {
+            const tracks = await searchDeezer(q);
+            if (mySeq !== deezerSearchSeq) return;  // newer query in flight
+            renderDeezerResults(tracks);
+          } catch (err) {
+            if (mySeq !== deezerSearchSeq) return;
+            if (host) host.innerHTML = '<div class="deezer-empty error">Search failed. Check your connection and try again.</div>';
+          }
+        }, 280);
+      });
+    }
+  }
 
   // === Settings ===
   function bindSettings() {
@@ -1047,13 +1484,24 @@
     fade(walkupAudio, 0, targetVol, FADE_IN_S * 1000);
   }
 
-  // The play-through length is the lesser of WALKUP_DURATION_S and the audio
+  // Cap for the current player's walk-up. Deezer-sourced clips are held to
+  // DEEZER_CLIP_DURATION_S (10s) because the umpires aren't going to let us
+  // play a full 30-second preview.
+  function currentWalkupCap() {
+    if (currentPlayer && currentPlayer._deezerTrack && !currentPlayer._deezerTrack._missing) {
+      return DEEZER_CLIP_DURATION_S;
+    }
+    return WALKUP_DURATION_S;
+  }
+
+  // The play-through length is the lesser of the configured cap and the audio
   // file's natural duration. For ~10s clips, total = ~10s; for longer songs we
-  // cap at WALKUP_DURATION_S and fade out before the song ends.
+  // cap at the configured ceiling and fade out before the song ends.
   function effectiveWalkupTotal() {
     const d = walkupAudio.duration;
-    if (isFinite(d) && d > 0) return Math.min(d, WALKUP_DURATION_S);
-    return WALKUP_DURATION_S;
+    const cap = currentWalkupCap();
+    if (isFinite(d) && d > 0) return Math.min(d, cap);
+    return cap;
   }
 
   // Length of the announcement, or 0 if none / not loaded yet.
