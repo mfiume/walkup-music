@@ -123,10 +123,12 @@
     roster = await resp.json();
     roster.sort((a, b) => a.number - b.number);
 
-    // Snapshot each player's default + alternates, then apply any saved
+    // Snapshot each player's default + alternates, build the shared song
+    // library (every default + every alternate), then apply any saved
     // per-player song overrides so the rest of the app just reads
     // player.walkup / player.song without caring which option is selected.
     snapshotSongDefaults();
+    buildSongLibrary();
     applySongOverrides();
 
     const saved = localStorage.getItem('walkup-simple-lineup');
@@ -306,9 +308,54 @@
     });
   }
 
+  // The song library is a flat list of every available walk-up song:
+  // each player's default plus any `alternates`. Built once at init from
+  // the roster. Any player can pick any library entry.
+  //
+  //   Item shape: {
+  //     file: string,            // path used as audio src and stable id
+  //     song: string,            // display title
+  //     defaultForNumber: ?int,  // present when this is a player's default
+  //     defaultForName:   ?str,  // matching player's first name
+  //   }
+  let songLibrary = [];
+
+  function buildSongLibrary() {
+    songLibrary = [];
+    const seen = new Set();
+    // Defaults first, in roster order.
+    roster.forEach(p => {
+      if (!p._defaultWalkup || seen.has(p._defaultWalkup)) return;
+      seen.add(p._defaultWalkup);
+      songLibrary.push({
+        file: p._defaultWalkup,
+        song: p._defaultSong || '(no title)',
+        defaultForNumber: p.number,
+        defaultForName: p.firstName,
+      });
+    });
+    // Then everyone's alternates.
+    roster.forEach(p => {
+      (p.alternates || []).forEach(a => {
+        if (!a.file || seen.has(a.file)) return;
+        seen.add(a.file);
+        songLibrary.push({
+          file: a.file,
+          song: a.song || '(no title)',
+          defaultForNumber: null,
+          defaultForName: null,
+        });
+      });
+    });
+  }
+
+  function findLibraryEntry(file) {
+    return songLibrary.find(s => s.file === file) || null;
+  }
+
   // Read playerSongOverrides and mutate each player's walkup + song fields
-  // to match the selected option. Invalid entries (file no longer in the
-  // alternates list) silently fall back to the default.
+  // to match the selected library entry. Invalid entries (file no longer in
+  // the library) silently fall back to the default.
   function applySongOverrides() {
     roster.forEach(p => {
       const sel = playerSongOverrides[p.number];
@@ -317,10 +364,10 @@
         p.song = p._defaultSong;
         return;
       }
-      const alt = (p.alternates || []).find(a => a.file === sel);
-      if (alt) {
-        p.walkup = alt.file;
-        p.song = alt.song || p._defaultSong;
+      const lib = findLibraryEntry(sel);
+      if (lib) {
+        p.walkup = lib.file;
+        p.song = lib.song;
       } else {
         p.walkup = p._defaultWalkup;
         p.song = p._defaultSong;
@@ -328,85 +375,90 @@
     });
   }
 
-  // Returns the full list of song choices for one player: their default
-  // first, followed by each alternate. Each item: { file, song, isDefault }.
-  function getSongOptions(p) {
-    const out = [{
-      file: p._defaultWalkup,
-      song: p._defaultSong,
-      isDefault: true,
-    }];
-    (p.alternates || []).forEach(a => {
-      out.push({ file: a.file, song: a.song || '', isDefault: false });
-    });
-    return out;
-  }
-
-  // Render the per-player picker into #song-options-list. Only shows players
-  // that actually have alternates — otherwise the list would be 13 rows of
-  // single-option pickers.
+  // Per-player accordion: each player gets a <details> row. Collapsed shows
+  // #N, name, and the current song (default or selected). Expanded reveals
+  // the full song library; tapping a library entry assigns it to the player.
+  // Library entries that are someone else's default get a small "Adrian's"
+  // tag so the coach knows where the song came from.
   function renderSongOptionsList() {
     const host = document.getElementById('song-options-list');
     if (!host) return;
+    // Preserve which player rows are currently expanded across re-renders.
+    const expanded = new Set(
+      Array.from(host.querySelectorAll('details.song-player-card[open]'))
+        .map(d => d.dataset.pnum)
+    );
     host.innerHTML = '';
-    const players = roster
-      .filter(p => p.alternates && p.alternates.length > 0)
-      .slice()
-      .sort((a, b) => a.number - b.number);
 
-    if (players.length === 0) {
+    const players = roster.slice().sort((a, b) => a.number - b.number);
+    if (players.length === 0 || songLibrary.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty-state subtle';
-      empty.textContent = 'No alternate songs configured yet.';
+      empty.textContent = 'No songs available.';
       host.appendChild(empty);
       return;
     }
 
     players.forEach(p => {
-      const card = document.createElement('div');
+      const card = document.createElement('details');
       card.className = 'song-player-card';
-      const head = document.createElement('div');
-      head.className = 'song-player-head';
-      head.innerHTML = `
+      card.dataset.pnum = String(p.number);
+      if (expanded.has(String(p.number))) card.open = true;
+
+      const summary = document.createElement('summary');
+      summary.className = 'song-player-head';
+      const isCustom = playerSongOverrides[p.number] && playerSongOverrides[p.number] !== p._defaultWalkup;
+      summary.innerHTML = `
         <span class="lineup-num">#${p.number}</span>
         <span class="song-player-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
+        <span class="song-player-current ${isCustom ? 'is-custom' : ''}">
+          ${escapeHtml(p.song || p._defaultSong || '(no song)')}
+          ${isCustom ? '<span class="song-player-customdot" title="Custom selection"></span>' : ''}
+        </span>
+        <span class="song-player-caret" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
       `;
-      card.appendChild(head);
+      card.appendChild(summary);
 
       const opts = document.createElement('div');
       opts.className = 'song-opts';
-      getSongOptions(p).forEach(opt => {
-        const isActive = p.walkup === opt.file;
+      songLibrary.forEach(lib => {
+        const isActive = p.walkup === lib.file;
+        const isOwnDefault = lib.defaultForNumber === p.number;
+        const isOthersDefault = lib.defaultForNumber != null && lib.defaultForNumber !== p.number;
+
         const row = document.createElement('div');
         row.className = 'song-opt' + (isActive ? ' active' : '');
         row.setAttribute('role', 'radio');
         row.setAttribute('aria-checked', isActive ? 'true' : 'false');
         row.dataset.pnum = String(p.number);
-        row.dataset.file = opt.file;
+        row.dataset.file = lib.file;
+
+        let tagHtml = '';
+        if (isOwnDefault)      tagHtml = '<span class="song-opt-tag">Default</span>';
+        else if (isOthersDefault) tagHtml = `<span class="song-opt-tag muted">${escapeHtml(lib.defaultForName)}'s</span>`;
 
         row.innerHTML = `
-          <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(opt.song || 'song')}">
+          <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(lib.song)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
           </button>
-          <span class="song-opt-title">${escapeHtml(opt.song || '(no title)')}</span>
-          ${opt.isDefault ? '<span class="song-opt-tag">Default</span>' : ''}
+          <span class="song-opt-title">${escapeHtml(lib.song)}</span>
+          ${tagHtml}
           <span class="song-opt-check" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </span>
         `;
 
-        // Selecting the row (clicking anywhere except the preview button)
         row.addEventListener('click', (e) => {
           if (e.target.closest('.song-opt-preview')) return;
-          selectSongForPlayer(p.number, opt.file);
+          selectSongForPlayer(p.number, lib.file);
         });
 
-        // Preview play — listen to ~12s of the file. Stops any current
-        // preview so only one plays at a time.
         const previewBtn = row.querySelector('.song-opt-preview');
         previewBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          togglePreview(opt.file, previewBtn);
+          togglePreview(lib.file, previewBtn);
         });
 
         opts.appendChild(row);
