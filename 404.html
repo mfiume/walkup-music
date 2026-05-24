@@ -31,7 +31,7 @@
   <meta name="twitter:description" content="Announcements + walk-up music for every batter, every at-bat.">
   <meta name="twitter:image" content="https://mfiume.github.io/walkup-music/og-image.png?v=1">
 
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -192,6 +192,32 @@
   <audio id="walkup-audio" preload="auto"></audio>
   <audio id="team-intro-audio" preload="auto" src="audio/simple/team-intro.wav"></audio>
 
-  <script src="app.js?v=29"></script>
+  <!-- Deezer search modal -->
+  <div id="deezer-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="deezer-modal-title">
+    <div id="deezer-modal-backdrop"></div>
+    <div id="deezer-modal-content">
+      <div id="deezer-modal-header">
+        <div>
+          <div id="deezer-modal-title">Search Deezer</div>
+          <div id="deezer-modal-subtitle"></div>
+        </div>
+        <button id="deezer-close" aria-label="Close">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="deezer-search-wrap">
+        <svg class="deezer-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/>
+        </svg>
+        <input type="text" id="deezer-search-input" placeholder="Song or artist…" autocomplete="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div id="deezer-results">
+        <div class="deezer-empty">Search for any song or artist above.</div>
+      </div>
+      <div class="deezer-footnote">First 10 seconds of the Deezer 30-second preview will play as the walk-up.</div>
+    </div>
+  </div>
+
+  <script src="app.js?v=30"></script>
 </body>
 </html>
