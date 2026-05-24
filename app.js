@@ -167,6 +167,15 @@
       } catch (_) { lineup = []; }
     }
 
+    // Ask the browser to keep our storage durable. On a PWA / home-screen
+    // install this is automatic, but in a regular browser tab some engines
+    // (notably Safari ITP) can evict localStorage + IndexedDB under storage
+    // pressure or after periods of inactivity. Requesting persistence makes
+    // selections actually survive. Fire-and-forget — best-effort.
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(() => {});
+    }
+
     bindTabs();
     bindTransport();
     bindNowPlaying();
@@ -176,10 +185,17 @@
     bindMediaSession();
     bindDeezerModal();
 
-    // If we have a lineup, point at the leadoff batter so the bar shows
-    // "Up Next: batter 1" right away. Just tap Play to start the game.
+    // Restore the lineup cursor so a hard refresh returns to whoever was Up
+    // Next / batting, not the leadoff hitter. Falls back to 0 if the saved
+    // index points past the (possibly edited) lineup.
+    let restoredIdx = 0;
+    const savedIdx = localStorage.getItem('walkup-simple-cursor');
+    if (savedIdx != null) {
+      const n = parseInt(savedIdx, 10);
+      if (Number.isFinite(n) && n >= 0 && n < lineup.length) restoredIdx = n;
+    }
     if (lineup.length > 0) {
-      currentBatterIdx = 0;
+      currentBatterIdx = restoredIdx;
       showBarFromLineup();
     }
 
@@ -215,6 +231,17 @@
 
   function saveLineup() {
     localStorage.setItem('walkup-simple-lineup', JSON.stringify(lineup));
+    saveCursor();
+  }
+
+  // Persist the lineup cursor (currentBatterIdx) so that a hard refresh comes
+  // back to whoever was Up Next / batting. Stored as a plain string so it
+  // works in any storage backend. Called from showBarFromLineup + playPlayer
+  // which together cover every cursor mutation site.
+  function saveCursor() {
+    try {
+      localStorage.setItem('walkup-simple-cursor', String(currentBatterIdx));
+    } catch (_) { /* storage full / disabled — ignore */ }
   }
 
   // === Tabs ===
@@ -1200,10 +1227,10 @@
       if (lineup.length === 0) return;
       if (!confirm('Clear the entire batting order?')) return;
       lineup = [];
-      saveLineup();
       stopAll();
       currentPlayer = null;
       currentBatterIdx = -1;
+      saveLineup();  // also persists cursor reset
       renderLineup();
       renderAvailable();
       updatePlaybackBar();
@@ -1254,6 +1281,7 @@
       const num = lineup[currentBatterIdx];
       currentPlayer = roster.find(p => p.number === num) || null;
     }
+    saveCursor();
     progressFill.style.width = '0%';
     npProgressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
@@ -1409,6 +1437,7 @@
     stopAll();
     currentPlayer = player;
     isPaused = false;
+    saveCursor();
 
     // Set src + load only if it isn't already set to this file. This avoids
     // re-fetching the audio on every play, which on iOS is what stalls
