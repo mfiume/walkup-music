@@ -45,7 +45,10 @@
     "lastName": "Pitton",
     "announcement": "audio/simple/announcements/emmett.wav",
     "walkup": "audio/simple/walkups-clean/emmett.mp3",
-    "song": "Give It Away"
+    "song": "Give It Away",
+    "alternates": [
+      { "file": "audio/simple/walkups-alt/emmett-fireball.mp3", "song": "Fireball" }
+    ]
   },
   {
     "number": 10,

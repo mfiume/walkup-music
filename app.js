@@ -34,6 +34,19 @@
   // Overlap is the default — feels more like a real stadium walk-up.
   let playbackMode = localStorage.getItem('walkup-simple-mode') || 'overlap';
 
+  // Per-player song override:  { [playerNumber]: walkupFilePath }
+  // Empty / missing entry = the default in roster.json. Saved in localStorage
+  // so a coach's picks survive reloads and PWA restarts.
+  let playerSongOverrides = (() => {
+    try { return JSON.parse(localStorage.getItem('walkup-simple-songs') || '{}') || {}; }
+    catch (_) { return {}; }
+  })();
+
+  // Single audio element used for previewing alternates in the Settings tab,
+  // separate from the walk-up / announcement / team-intro elements.
+  const previewAudio = new Audio();
+  previewAudio.preload = 'auto';
+
   // Reorder state
   let dragIdx = -1;
 
@@ -109,6 +122,12 @@
     const resp = await fetch('roster.json');
     roster = await resp.json();
     roster.sort((a, b) => a.number - b.number);
+
+    // Snapshot each player's default + alternates, then apply any saved
+    // per-player song overrides so the rest of the app just reads
+    // player.walkup / player.song without caring which option is selected.
+    snapshotSongDefaults();
+    applySongOverrides();
 
     const saved = localStorage.getItem('walkup-simple-lineup');
     if (saved) {
@@ -198,6 +217,15 @@
     const scrollEl = document.querySelector('main');
     if (scrollEl) scrollEl.scrollTop = 0;
 
+    // Stop any in-flight song preview when leaving the Settings tab.
+    if (tabName !== 'settings') {
+      try { previewAudio.pause(); previewAudio.currentTime = 0; } catch (_) {}
+      document.querySelectorAll('.song-opt-preview.playing').forEach(b => {
+        b.classList.remove('playing');
+        b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+      });
+    }
+
     if (pushUrl) {
       // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,
       // but a local file:// or root deploy gets clean /lineup paths too.
@@ -265,6 +293,184 @@
     if (playing) stopKeepalive(); else startKeepalive();
   }
 
+  // === Per-player song overrides ===
+  // Each player gets a `_defaultWalkup` / `_defaultSong` snapshot taken
+  // before any override is applied, so we can always show / switch back
+  // to their original.
+  function snapshotSongDefaults() {
+    roster.forEach(p => {
+      p._defaultWalkup = p.walkup;
+      p._defaultSong = p.song || '';
+      // Normalise alternates: array of { file, song }
+      if (!Array.isArray(p.alternates)) p.alternates = [];
+    });
+  }
+
+  // Read playerSongOverrides and mutate each player's walkup + song fields
+  // to match the selected option. Invalid entries (file no longer in the
+  // alternates list) silently fall back to the default.
+  function applySongOverrides() {
+    roster.forEach(p => {
+      const sel = playerSongOverrides[p.number];
+      if (!sel || sel === p._defaultWalkup) {
+        p.walkup = p._defaultWalkup;
+        p.song = p._defaultSong;
+        return;
+      }
+      const alt = (p.alternates || []).find(a => a.file === sel);
+      if (alt) {
+        p.walkup = alt.file;
+        p.song = alt.song || p._defaultSong;
+      } else {
+        p.walkup = p._defaultWalkup;
+        p.song = p._defaultSong;
+      }
+    });
+  }
+
+  // Returns the full list of song choices for one player: their default
+  // first, followed by each alternate. Each item: { file, song, isDefault }.
+  function getSongOptions(p) {
+    const out = [{
+      file: p._defaultWalkup,
+      song: p._defaultSong,
+      isDefault: true,
+    }];
+    (p.alternates || []).forEach(a => {
+      out.push({ file: a.file, song: a.song || '', isDefault: false });
+    });
+    return out;
+  }
+
+  // Render the per-player picker into #song-options-list. Only shows players
+  // that actually have alternates — otherwise the list would be 13 rows of
+  // single-option pickers.
+  function renderSongOptionsList() {
+    const host = document.getElementById('song-options-list');
+    if (!host) return;
+    host.innerHTML = '';
+    const players = roster
+      .filter(p => p.alternates && p.alternates.length > 0)
+      .slice()
+      .sort((a, b) => a.number - b.number);
+
+    if (players.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state subtle';
+      empty.textContent = 'No alternate songs configured yet.';
+      host.appendChild(empty);
+      return;
+    }
+
+    players.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'song-player-card';
+      const head = document.createElement('div');
+      head.className = 'song-player-head';
+      head.innerHTML = `
+        <span class="lineup-num">#${p.number}</span>
+        <span class="song-player-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
+      `;
+      card.appendChild(head);
+
+      const opts = document.createElement('div');
+      opts.className = 'song-opts';
+      getSongOptions(p).forEach(opt => {
+        const isActive = p.walkup === opt.file;
+        const row = document.createElement('div');
+        row.className = 'song-opt' + (isActive ? ' active' : '');
+        row.setAttribute('role', 'radio');
+        row.setAttribute('aria-checked', isActive ? 'true' : 'false');
+        row.dataset.pnum = String(p.number);
+        row.dataset.file = opt.file;
+
+        row.innerHTML = `
+          <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(opt.song || 'song')}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          </button>
+          <span class="song-opt-title">${escapeHtml(opt.song || '(no title)')}</span>
+          ${opt.isDefault ? '<span class="song-opt-tag">Default</span>' : ''}
+          <span class="song-opt-check" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+        `;
+
+        // Selecting the row (clicking anywhere except the preview button)
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.song-opt-preview')) return;
+          selectSongForPlayer(p.number, opt.file);
+        });
+
+        // Preview play — listen to ~12s of the file. Stops any current
+        // preview so only one plays at a time.
+        const previewBtn = row.querySelector('.song-opt-preview');
+        previewBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          togglePreview(opt.file, previewBtn);
+        });
+
+        opts.appendChild(row);
+      });
+      card.appendChild(opts);
+      host.appendChild(card);
+    });
+  }
+
+  function selectSongForPlayer(playerNumber, file) {
+    const p = roster.find(x => x.number === playerNumber);
+    if (!p) return;
+    if (file === p._defaultWalkup) {
+      delete playerSongOverrides[playerNumber];
+    } else {
+      playerSongOverrides[playerNumber] = file;
+    }
+    localStorage.setItem('walkup-simple-songs', JSON.stringify(playerSongOverrides));
+    applySongOverrides();
+
+    // Re-render lineup / roster so song titles update wherever they appear.
+    renderLineup();
+    renderRoster();
+    renderAvailable();
+    renderSongOptionsList();
+
+    // If this player is currently queued up or playing, refresh the bar +
+    // the preloaded audio so a future Play picks up the new file.
+    if (currentPlayer && currentPlayer.number === playerNumber) {
+      currentPlayer = p;
+      updatePlaybackBar();
+      updateMediaSession();
+      if (!playbackPhase) preloadForPlayer(currentPlayer);
+    }
+  }
+
+  function togglePreview(file, btn) {
+    const sameBtn = btn.classList.contains('playing');
+    // Always reset state of any other preview button
+    document.querySelectorAll('.song-opt-preview.playing').forEach(b => {
+      b.classList.remove('playing');
+      b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+    });
+    try { previewAudio.pause(); previewAudio.currentTime = 0; } catch (_) {}
+
+    if (sameBtn) return;
+
+    previewAudio.src = file;
+    previewAudio.currentTime = 0;
+    btn.classList.add('playing');
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>';
+    previewAudio.play().catch(() => {
+      btn.classList.remove('playing');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+    });
+  }
+  // Stop preview when it ends naturally
+  previewAudio.addEventListener('ended', () => {
+    document.querySelectorAll('.song-opt-preview.playing').forEach(b => {
+      b.classList.remove('playing');
+      b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+    });
+  });
+
   // === Settings ===
   function bindSettings() {
     const opts = document.querySelectorAll('.settings-opt');
@@ -287,6 +493,7 @@
       });
     });
     paint();
+    renderSongOptionsList();
   }
 
   // === Roster (preview) ===
