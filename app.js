@@ -425,8 +425,10 @@
       opts.className = 'song-opts';
       songLibrary.forEach(lib => {
         const isActive = p.walkup === lib.file;
-        const isOwnDefault = lib.defaultForNumber === p.number;
-        const isOthersDefault = lib.defaultForNumber != null && lib.defaultForNumber !== p.number;
+        // 'Default' tag shows only on this player's own default song,
+        // so they can see which one switches back. We don't attribute
+        // any song to other players — every song is just a library entry.
+        const isOwnDefault = lib.file === p._defaultWalkup;
 
         const row = document.createElement('div');
         row.className = 'song-opt' + (isActive ? ' active' : '');
@@ -435,9 +437,7 @@
         row.dataset.pnum = String(p.number);
         row.dataset.file = lib.file;
 
-        let tagHtml = '';
-        if (isOwnDefault)      tagHtml = '<span class="song-opt-tag">Default</span>';
-        else if (isOthersDefault) tagHtml = `<span class="song-opt-tag muted">${escapeHtml(lib.defaultForName)}'s</span>`;
+        const tagHtml = isOwnDefault ? '<span class="song-opt-tag">Default</span>' : '';
 
         row.innerHTML = `
           <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(lib.song)}">
