@@ -1,5 +1,6 @@
 [
   { "file": "audio/simple/library/all-i-do-is-win.mp3",    "song": "All I Do Is Win" },
+  { "file": "audio/simple/library/dtmf.mp3",                "song": "DtMF" },
   { "file": "audio/simple/library/enter-sandman.mp3",       "song": "Enter Sandman" },
   { "file": "audio/simple/library/fair-trade.mp3",          "song": "Fair Trade" },
   { "file": "audio/simple/library/fireball.mp3",            "song": "Fireball" },
