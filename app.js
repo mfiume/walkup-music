@@ -18,7 +18,13 @@
   const FADE_IN_S = 0.3;            // soft fade-in when music starts (never cuts)
   const FADE_OUT_S = 1.5;           // soft fade-out at the end of any clip
   const OVERLAP_S = 1.2;            // start music this many seconds before announcement ends
-  const MUSIC_DUCKED_VOL = 0.35;    // music volume while announcement still playing
+  const MUSIC_DUCKED_VOL = 0.35;    // library-clip volume while announcement still playing
+  // Deezer previews are commercially mastered (much hotter RMS than our
+  // hand-trimmed library clips), so the same ducking multiplier sounds far
+  // louder under the announcement. Duck Deezer tracks harder during the
+  // talk track, and hold their full level a touch below 1.0 too.
+  const DEEZER_DUCKED_VOL = 0.18;
+  const DEEZER_FULL_VOL = 0.85;
   const MUSIC_FULL_VOL = 1.0;
   const MUSIC_RAMP_S = 0.9;         // ramp from ducked → full once announcement ends
 
@@ -1461,7 +1467,7 @@
         if (playbackMode === 'overlap') {
           // Music plays the entire time, ducked under the announcement.
           // Soft fade-in from 0 to ducked so it doesn't cut in.
-          startWalkupAudio(MUSIC_DUCKED_VOL);
+          startWalkupAudio(duckedVol());
         } else {
           scheduleAnnouncementOverlap();
         }
@@ -1503,7 +1509,7 @@
     // Music starts ducked under the tail of the announcement, fading in
     // from 0 so the entry isn't a hard cut. Announcement continues at full
     // volume.
-    startWalkupAudio(MUSIC_DUCKED_VOL);
+    startWalkupAudio(duckedVol());
   }
 
   function onAnnouncementEnded() {
@@ -1512,7 +1518,7 @@
     if (walkupAudio.paused && walkupAudio.src) {
       walkupAudio.play().catch(() => {});
     }
-    fade(walkupAudio, walkupAudio.volume || MUSIC_DUCKED_VOL, MUSIC_FULL_VOL, MUSIC_RAMP_S * 1000);
+    fade(walkupAudio, walkupAudio.volume || duckedVol(), fullVol(), MUSIC_RAMP_S * 1000);
     armWalkupFadeOut();
   }
 
@@ -1520,7 +1526,7 @@
     playbackPhase = 'walkup';
     // No announcement: fade music in from 0 to full so the song doesn't
     // hard-cut on entry.
-    startWalkupAudio(MUSIC_FULL_VOL);
+    startWalkupAudio(fullVol());
     armWalkupFadeOut();
   }
 
@@ -1542,11 +1548,20 @@
   // DEEZER_CLIP_DURATION_S (10s) because the umpires aren't going to let us
   // play a full 30-second preview.
   function currentWalkupCap() {
-    if (currentPlayer && currentPlayer._deezerTrack && !currentPlayer._deezerTrack._missing) {
-      return DEEZER_CLIP_DURATION_S;
-    }
+    if (isCurrentPlayerDeezer()) return DEEZER_CLIP_DURATION_S;
     return WALKUP_DURATION_S;
   }
+
+  // True when the current player's walk-up is a (loaded) Deezer preview.
+  function isCurrentPlayerDeezer() {
+    return !!(currentPlayer && currentPlayer._deezerTrack && !currentPlayer._deezerTrack._missing);
+  }
+
+  // Volume the music sits at while the announcement is still playing, and the
+  // level it ramps up to afterwards. Deezer previews are mastered hot, so they
+  // get ducked harder and held a bit below full.
+  function duckedVol() { return isCurrentPlayerDeezer() ? DEEZER_DUCKED_VOL : MUSIC_DUCKED_VOL; }
+  function fullVol() { return isCurrentPlayerDeezer() ? DEEZER_FULL_VOL : MUSIC_FULL_VOL; }
 
   // The play-through length is the lesser of the configured cap and the audio
   // file's natural duration. For ~10s clips, total = ~10s; for longer songs we
