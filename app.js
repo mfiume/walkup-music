@@ -21,10 +21,12 @@
   const MUSIC_DUCKED_VOL = 0.35;    // library-clip volume while announcement still playing
   // Deezer previews are commercially mastered (much hotter RMS than our
   // hand-trimmed library clips), so the same ducking multiplier sounds far
-  // louder under the announcement. Duck Deezer tracks harder during the
-  // talk track, and hold their full level a touch below 1.0 too.
-  const DEEZER_DUCKED_VOL = 0.18;
-  const DEEZER_FULL_VOL = 0.85;
+  // louder under the announcement. The announcement is already at max
+  // volume, so the only lever is the music: duck Deezer tracks way down
+  // under the talk track, and hold their full level a bit below 1.0 too.
+  // (HTMLMediaElement volume is linear amplitude — 0.07 ≈ -23 dB.)
+  const DEEZER_DUCKED_VOL = 0.07;
+  const DEEZER_FULL_VOL = 0.8;
   const MUSIC_FULL_VOL = 1.0;
   const MUSIC_RAMP_S = 0.9;         // ramp from ducked → full once announcement ends
 
