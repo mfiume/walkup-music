@@ -87,6 +87,27 @@ header {
   margin: 0 auto;
 }
 
+/* === Offline indicator === */
+/* Slim banner under the header. In normal document flow, so it never overlaps
+   content — it just isn't there until the device goes offline. */
+.offline-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: linear-gradient(180deg, #f5c518 0%, #e0ac00 100%);
+  color: #1a1500;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+.offline-bar svg { flex-shrink: 0; }
+
 /* === Brand === */
 .brand {
   display: flex;
@@ -1209,6 +1230,9 @@ h3 {
   border-color: rgba(var(--accent-rgb), 0.5);
   background: var(--accent-soft);
 }
+/* Deezer search needs a connection — dim the launcher when offline so it's
+   clear it won't do anything (the modal still explains why if tapped). */
+body.is-offline .song-opt.song-opt-deezer-search { opacity: 0.5; }
 .song-opt-deezer-icon {
   width: 28px;
   height: 28px;

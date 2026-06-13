@@ -127,24 +127,40 @@
   const pregamePauseIcon = document.getElementById('pregame-pause-icon');
 
   // === Init ===
-  // Unregister any stale service worker that might be intercepting fetches
-  // and serving an old build. Runs once per page load.
-  async function clearServiceWorkers() {
+  // Register the service worker that makes the app work offline. It uses a
+  // network-first strategy for code/data (so online users always get the
+  // latest build — no stale-build trap) and cache-first for the precached
+  // audio, so a whole game can run with no connection.
+  async function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     try {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for (const r of regs) await r.unregister();
-      if (regs.length) console.log('Unregistered', regs.length, 'service worker(s)');
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map(k => caches.delete(k)));
-        if (keys.length) console.log('Cleared', keys.length, 'cache(s)');
-      }
-    } catch (_) { /* ignore */ }
+      await navigator.serviceWorker.register('sw.js');
+    } catch (e) {
+      console.warn('Service worker registration failed', e);
+    }
+  }
+
+  // Show a slim banner under the header when the device drops offline, so the
+  // user knows the network is gone but the app is still fully usable from its
+  // saved audio. Toggling body.is-offline also lets the CSS soften features
+  // that genuinely need a connection (the Deezer search launcher).
+  function bindOfflineIndicator() {
+    const bar = document.getElementById('offline-bar');
+    const sync = () => {
+      const offline = !navigator.onLine;
+      if (bar) bar.classList.toggle('hidden', !offline);
+      document.body.classList.toggle('is-offline', offline);
+    };
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    sync();
   }
 
   async function init() {
-    await clearServiceWorkers();
+    // Fire-and-forget: registration is fast and the SW precaches in the
+    // background, so it never blocks first paint or the initial data fetch.
+    registerServiceWorker();
+    bindOfflineIndicator();
 
     // Roster (who) and library (what) are loaded in parallel. Roster lists
     // each player with their default walkup file path; library.json is the
@@ -871,7 +887,9 @@
     if (!modal || !input || !results) return;
     if (label) label.textContent = `For #${player.number} ${player.firstName} ${player.lastName}`;
     input.value = '';
-    results.innerHTML = '<div class="deezer-empty">Search for any song or artist above.</div>';
+    results.innerHTML = navigator.onLine
+      ? '<div class="deezer-empty">Search for any song or artist above.</div>'
+      : '<div class="deezer-empty">You\'re offline. Deezer search needs a connection — your saved songs still play.</div>';
     modal.classList.remove('hidden');
     document.body.classList.add('modal-open');
     setTimeout(() => { try { input.focus(); } catch (_) {} }, 30);
