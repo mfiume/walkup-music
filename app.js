@@ -539,7 +539,8 @@
   // A track counts as explicit if Deezer's boolean flag is set, or its
   // lyric advisory code is "Explicit" (1) or "Partially Explicit" (4).
   // Codes: 0 not-explicit, 1 explicit, 2 unknown, 3 edited(clean),
-  // 4 partially-explicit. We keep unknown/edited; this is a kids' team app.
+  // 4 partially-explicit. Explicit tracks aren't hidden — they're flagged
+  // with an "E" marker so the coach can choose with eyes open.
   function isExplicitTrack(t) {
     if (!t) return false;
     if (t.explicit_lyrics === true) return true;
@@ -549,11 +550,9 @@
 
   async function searchDeezer(q) {
     if (!q || q.trim().length < 2) return [];
-    // Pull a few extra results since the explicit filter trims the list.
-    const url = `https://api.deezer.com/search?q=${encodeURIComponent(q.trim())}&limit=25`;
+    const url = `https://api.deezer.com/search?q=${encodeURIComponent(q.trim())}&limit=15`;
     const data = await deezerJsonp(url);
-    const tracks = (data && Array.isArray(data.data)) ? data.data : [];
-    return tracks.filter(t => !isExplicitTrack(t));
+    return (data && Array.isArray(data.data)) ? data.data : [];
   }
 
   // Hydrate all saved Deezer assignments at startup: pull each cached blob out
@@ -593,6 +592,7 @@
       artist: (track.artist && track.artist.name) || 'Unknown',
       artUrl: (track.album && (track.album.cover_medium || track.album.cover)) || '',
       previewUrl: track.preview,
+      explicit: isExplicitTrack(track),
     };
     playerDeezerSongs[playerNumber] = entry;
     localStorage.setItem('walkup-simple-deezer', JSON.stringify(playerDeezerSongs));
@@ -725,7 +725,7 @@
           </button>
           ${dz.artUrl ? `<img class="song-opt-art" src="${escapeHtml(dz.artUrl)}" alt="" loading="lazy">` : ''}
           <span class="song-opt-title">
-            <span class="song-opt-title-line">${escapeHtml(dz.title)}</span>
+            <span class="song-opt-title-line">${dz.explicit ? '<span class="explicit-badge" title="Explicit">E</span>' : ''}${escapeHtml(dz.title)}</span>
             <span class="song-opt-sub">${escapeHtml(dz.artist)}</span>
           </span>
           <span class="song-opt-tag">Deezer</span>
@@ -944,12 +944,15 @@
     host.innerHTML = '';
     lastDeezerResults = tracks || [];
     if (!tracks || tracks.length === 0) {
-      host.innerHTML = '<div class="deezer-empty">No clean results. Explicit tracks are hidden — try the artist or a different title.</div>';
+      host.innerHTML = '<div class="deezer-empty">No results.</div>';
       return;
     }
     tracks.forEach(t => {
       if (!t.preview) return;  // need a previewable track
       const art = (t.album && (t.album.cover_medium || t.album.cover)) || '';
+      const explicitHtml = isExplicitTrack(t)
+        ? '<span class="explicit-badge" title="Explicit">E</span>'
+        : '';
       const row = document.createElement('div');
       row.className = 'deezer-result';
       row.innerHTML = `
@@ -958,7 +961,7 @@
         </button>
         ${art ? `<img class="deezer-result-art" src="${escapeHtml(art)}" alt="" loading="lazy">` : '<span class="deezer-result-art placeholder"></span>'}
         <span class="deezer-result-info">
-          <span class="deezer-result-title">${escapeHtml(t.title_short || t.title || '')}</span>
+          <span class="deezer-result-title">${explicitHtml}${escapeHtml(t.title_short || t.title || '')}</span>
           <span class="deezer-result-artist">${escapeHtml((t.artist && t.artist.name) || '')}</span>
         </span>
         <button class="deezer-result-use" type="button">Use</button>

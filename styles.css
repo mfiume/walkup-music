@@ -1434,6 +1434,26 @@ body.modal-open { overflow: hidden; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* "E" explicit marker — small square badge, iOS/Spotify style. */
+.explicit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: var(--muted);
+  color: var(--bg);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: middle;
+  flex-shrink: 0;
+  position: relative;
+  top: -1px;
+}
 .deezer-result-artist {
   font-size: 0.78rem;
   color: var(--muted);
