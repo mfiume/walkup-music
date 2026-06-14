@@ -536,11 +536,24 @@
     });
   }
 
+  // A track counts as explicit if Deezer's boolean flag is set, or its
+  // lyric advisory code is "Explicit" (1) or "Partially Explicit" (4).
+  // Codes: 0 not-explicit, 1 explicit, 2 unknown, 3 edited(clean),
+  // 4 partially-explicit. We keep unknown/edited; this is a kids' team app.
+  function isExplicitTrack(t) {
+    if (!t) return false;
+    if (t.explicit_lyrics === true) return true;
+    const code = t.explicit_content_lyrics;
+    return code === 1 || code === 4;
+  }
+
   async function searchDeezer(q) {
     if (!q || q.trim().length < 2) return [];
-    const url = `https://api.deezer.com/search?q=${encodeURIComponent(q.trim())}&limit=15`;
+    // Pull a few extra results since the explicit filter trims the list.
+    const url = `https://api.deezer.com/search?q=${encodeURIComponent(q.trim())}&limit=25`;
     const data = await deezerJsonp(url);
-    return (data && Array.isArray(data.data)) ? data.data : [];
+    const tracks = (data && Array.isArray(data.data)) ? data.data : [];
+    return tracks.filter(t => !isExplicitTrack(t));
   }
 
   // Hydrate all saved Deezer assignments at startup: pull each cached blob out
@@ -931,7 +944,7 @@
     host.innerHTML = '';
     lastDeezerResults = tracks || [];
     if (!tracks || tracks.length === 0) {
-      host.innerHTML = '<div class="deezer-empty">No results.</div>';
+      host.innerHTML = '<div class="deezer-empty">No clean results. Explicit tracks are hidden — try the artist or a different title.</div>';
       return;
     }
     tracks.forEach(t => {
@@ -993,6 +1006,10 @@
           if (host) host.innerHTML = '<div class="deezer-empty">Search for any song or artist above.</div>';
           return;
         }
+        if (!navigator.onLine) {
+          if (host) host.innerHTML = '<div class="deezer-empty">You\'re offline. Deezer search needs a connection — your saved songs still play.</div>';
+          return;
+        }
         if (host) host.innerHTML = '<div class="deezer-empty">Searching…</div>';
         const mySeq = ++deezerSearchSeq;
         deezerSearchTimer = setTimeout(async () => {
@@ -1002,7 +1019,10 @@
             renderDeezerResults(tracks);
           } catch (err) {
             if (mySeq !== deezerSearchSeq) return;
-            if (host) host.innerHTML = '<div class="deezer-empty error">Search failed. Check your connection and try again.</div>';
+            const msg = navigator.onLine
+              ? 'Search failed. Please try again.'
+              : 'You\'re offline. Deezer search needs a connection — your saved songs still play.';
+            if (host) host.innerHTML = `<div class="deezer-empty error">${msg}</div>`;
           }
         }, 280);
       });
