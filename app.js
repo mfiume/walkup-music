@@ -394,8 +394,10 @@
       const entry = findLibraryEntry(p.walkup);
       p._defaultSong = entry ? entry.song : '(no title)';
       p._defaultArtist = entry ? (entry.artist || '') : '';
+      p._defaultExplicit = entry ? !!entry.explicit : false;
       p.song = p._defaultSong;
       p.artist = p._defaultArtist;
+      p.explicit = p._defaultExplicit;
     });
   }
 
@@ -412,16 +414,19 @@
         p.walkup = p._defaultWalkup;
         p.song = p._defaultSong;
         p.artist = p._defaultArtist;
+        p.explicit = p._defaultExplicit;
       } else {
         const lib = findLibraryEntry(sel);
         if (lib) {
           p.walkup = lib.file;
           p.song = lib.song;
           p.artist = lib.artist || '';
+          p.explicit = !!lib.explicit;
         } else {
           p.walkup = p._defaultWalkup;
           p.song = p._defaultSong;
           p.artist = p._defaultArtist;
+          p.explicit = p._defaultExplicit;
         }
       }
     });
@@ -442,6 +447,7 @@
         p.walkup = url;
         p.song = entry.title;
         p.artist = entry.artist || '';
+        p.explicit = !!entry.explicit;
         p._deezerTrack = entry;
       } else {
         // Marker is present but the blob hasn't been hydrated yet (or the
@@ -463,10 +469,11 @@
   }
 
   // The small "E" explicit badge markup, or '' if the player's current song
-  // isn't an explicit Deezer track. Library songs are never explicit.
+  // isn't explicit. Works for both library songs (explicit flag in
+  // library.json) and Deezer tracks (flag carried on the saved entry); both
+  // funnel into player.explicit in apply*Songs().
   function explicitBadgeHtml(player) {
-    const dz = player && player._deezerTrack;
-    return (dz && dz.explicit) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
+    return (player && player.explicit) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
   }
 
   // HTML for a song label, with the explicit badge prefixed when relevant.

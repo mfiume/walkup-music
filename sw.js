@@ -14,7 +14,7 @@
 // player once). Deezer preview clips are stored separately in IndexedDB by
 // app.js and already work offline.
 
-const CACHE = 'walkup-simple-v4-offline';
+const CACHE = 'walkup-simple-v5-offline';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -65,6 +65,7 @@ const AUDIO = [
   'audio/simple/library/home-run.mp3',
   'audio/simple/library/lion-sleeps-tonight.mp3',
   'audio/simple/library/lose-yourself.mp3',
+  'audio/simple/library/national-treasures.mp3',
   'audio/simple/library/run-it.mp3',
   'audio/simple/library/seven-nation-army.mp3',
   'audio/simple/library/thick-of-it.mp3',
