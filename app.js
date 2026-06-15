@@ -462,6 +462,20 @@
     return t || a || '';
   }
 
+  // The small "E" explicit badge markup, or '' if the player's current song
+  // isn't an explicit Deezer track. Library songs are never explicit.
+  function explicitBadgeHtml(player) {
+    const dz = player && player._deezerTrack;
+    return (dz && dz.explicit) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
+  }
+
+  // HTML for a song label, with the explicit badge prefixed when relevant.
+  // Use this anywhere the song name is shown via innerHTML so the E marker
+  // appears consistently (roster, lineup, playback bar, Now Playing, etc.).
+  function songLabelHtml(player) {
+    return explicitBadgeHtml(player) + escapeHtml(songLine(player));
+  }
+
   // === Deezer integration ===
   // Search Deezer's public API for a song, preview it inline, and on "Use"
   // download the 30s MP3 preview into IndexedDB so it plays as the player's
@@ -692,13 +706,15 @@
       summary.className = 'song-player-head';
       const dz = playerDeezerSongs[p.number];
       const isCustom = (!dz && playerSongOverrides[p.number] && playerSongOverrides[p.number] !== p._defaultWalkup) || !!dz;
-      const currentLine = songLine(p) || p._defaultSong || '(no song)';
+      const currentLabel = songLine(p)
+        ? songLabelHtml(p)
+        : escapeHtml(p._defaultSong || '(no song)');
       summary.innerHTML = `
         <span class="lineup-num">#${p.number}</span>
         <span class="song-player-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
         <span class="song-player-current ${isCustom ? 'is-custom' : ''}">
           ${dz ? '<span class="song-player-deezer-chip" title="From Deezer">DZ</span>' : ''}
-          ${escapeHtml(currentLine)}
+          ${currentLabel}
           ${isCustom ? '<span class="song-player-customdot" title="Custom selection"></span>' : ''}
         </span>
         <span class="song-player-caret" aria-hidden="true">
@@ -1070,7 +1086,7 @@
         <span class="roster-num">#${p.number}</span>
         <span class="roster-info">
           <span class="roster-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
-          <span class="roster-song">${escapeHtml(songLine(p))}</span>
+          <span class="roster-song">${songLabelHtml(p)}</span>
         </span>
         <span class="roster-play" aria-hidden="true">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
@@ -1115,7 +1131,7 @@
         <span class="lineup-num">#${p.number}</span>
         <span class="lineup-info">
           <span class="lineup-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
-          <span class="lineup-song">${escapeHtml(songLine(p))}</span>
+          <span class="lineup-song">${songLabelHtml(p)}</span>
         </span>
         <button class="lineup-play" aria-label="Play">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
@@ -1226,7 +1242,7 @@
         <span class="lineup-num">#${p.number}</span>
         <span class="lineup-info">
           <span class="lineup-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
-          <span class="lineup-song">${escapeHtml(songLine(p))}</span>
+          <span class="lineup-song">${songLabelHtml(p)}</span>
         </span>
         <span class="add-icon">+</span>
       `;
@@ -1426,7 +1442,7 @@
     npName.textContent = `${currentPlayer.firstName} ${currentPlayer.lastName}`;
     const npLine = songLine(currentPlayer);
     if (npLine) {
-      npSongName.textContent = npLine;
+      npSongName.innerHTML = songLabelHtml(currentPlayer);
       npSongName.classList.remove('hidden');
     } else {
       npSongName.classList.add('hidden');
@@ -1807,7 +1823,7 @@
     playbackName.textContent = `${currentPlayer.firstName} ${currentPlayer.lastName}`;
     const barLine = songLine(currentPlayer);
     if (barLine) {
-      playbackSongName.textContent = barLine;
+      playbackSongName.innerHTML = songLabelHtml(currentPlayer);
       playbackSongName.classList.remove('hidden');
     } else {
       playbackSongName.classList.add('hidden');
