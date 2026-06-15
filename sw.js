@@ -14,7 +14,7 @@
 // player once). Deezer preview clips are stored separately in IndexedDB by
 // app.js and already work offline.
 
-const CACHE = 'walkup-simple-v5-offline';
+const CACHE = 'walkup-simple-v6-offline';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).

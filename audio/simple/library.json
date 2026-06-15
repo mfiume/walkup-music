@@ -8,7 +8,7 @@
   { "file": "audio/simple/library/home-run.mp3",            "song": "HOME;RUN",                 "artist": "SEVENTEEN" },
   { "file": "audio/simple/library/lion-sleeps-tonight.mp3", "song": "The Lion Sleeps Tonight",  "artist": "The Tokens" },
   { "file": "audio/simple/library/lose-yourself.mp3",       "song": "Lose Yourself",            "artist": "Eminem" },
-  { "file": "audio/simple/library/national-treasures.mp3",  "song": "National Treasures",       "artist": "Drake", "explicit": true },
+  { "file": "audio/simple/library/national-treasures.mp3",  "song": "National Treasures",       "artist": "Drake" },
   { "file": "audio/simple/library/run-it.mp3",              "song": "Run It!",                  "artist": "Chris Brown" },
   { "file": "audio/simple/library/seven-nation-army.mp3",   "song": "Seven Nation Army",        "artist": "The White Stripes" },
   { "file": "audio/simple/library/thick-of-it.mp3",         "song": "Thick Of It",              "artist": "KSI (feat. Trippie Redd)" },
