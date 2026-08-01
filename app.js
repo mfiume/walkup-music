@@ -150,6 +150,12 @@
       const offline = !navigator.onLine;
       if (bar) bar.classList.toggle('hidden', !offline);
       document.body.classList.toggle('is-offline', offline);
+      // Spotify can't load without a connection; build (or reveal) the embed
+      // as soon as one comes back and the Music tab is showing.
+      const musicView = document.getElementById('music-view');
+      if (!offline && musicView && musicView.classList.contains('active')) {
+        ensureSpotifyEmbed();
+      }
     };
     window.addEventListener('online', sync);
     window.addEventListener('offline', sync);
@@ -199,6 +205,11 @@
     if (navigator.storage && navigator.storage.persist) {
       navigator.storage.persist().catch(() => {});
     }
+
+    bindSunoPlayer();
+    watchSpotifyFocus();
+    // Fire-and-forget: the Music tab fills in as soon as the manifest lands.
+    loadSunoPlaylist();
 
     bindTabs();
     bindTransport();
@@ -307,10 +318,13 @@
       });
     }
 
+    // The Spotify embed is only built once the Music tab is actually opened.
+    if (tabName === 'music') ensureSpotifyEmbed();
+
     if (pushUrl) {
       // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,
       // but a local file:// or root deploy gets clean /lineup paths too.
-      const base = location.pathname.replace(/\/(lineup|roster|settings)\/?$/, '');
+      const base = location.pathname.replace(/\/(lineup|roster|music|settings)\/?$/, '');
       const next = base.replace(/\/$/, '') + '/' + tabName;
       try {
         history.pushState({ tab: tabName }, '', next);
@@ -319,7 +333,7 @@
   }
 
   function tabFromUrl() {
-    const m = location.pathname.match(/\/(lineup|roster|settings)\/?$/);
+    const m = location.pathname.match(/\/(lineup|roster|music|settings)\/?$/);
     return m ? m[1] : 'lineup';
   }
 
@@ -347,6 +361,7 @@
         setIntroPlaying(false);
         return;
       }
+      stopBetweenInnings();
       // If a batter is queued or playing, stop them first; the intro is a
       // one-shot that owns the speakers for its duration.
       if (playbackPhase || isPaused) {
@@ -372,6 +387,280 @@
     if (pregamePauseIcon) pregamePauseIcon.style.display = playing ? '' : 'none';
     teamIntroBtn.setAttribute('aria-label', playing ? 'Stop team intro' : 'Play team intro');
     if (playing) stopKeepalive(); else startKeepalive();
+  }
+
+  // === Music tab — between-innings playlists ===============================
+  //
+  // Two sources, each clearly badged:
+  //
+  //   Suno    — their playlist pages send `frame-ancestors 'none'`, so there
+  //             is no embed to drop in and their API sends no CORS headers
+  //             either. scripts/sync_suno_playlist.py mirrors the playlist
+  //             into audio/suno/ + suno-playlist.json at build time, and the
+  //             app plays those files itself. That is what lets between-
+  //             innings music work on a field with no signal.
+  //   Spotify — the official iframe embed, created the first time this tab is
+  //             opened. We can't reach inside it, but reloading its src is
+  //             enough to silence it when a batter steps up.
+
+  let sunoPlaylist = null;         // { name, url, tracks: [...] }
+  let sunoIdx = -1;                // index into sunoPlaylist.tracks; -1 = idle
+  let sunoProgressRaf = null;
+  let spotifyFrame = null;         // created lazily on first Music tab visit
+
+  const sunoAudio = document.getElementById('suno-audio');
+  const sunoTracksEl = document.getElementById('suno-tracks');
+  const sunoSubEl = document.getElementById('suno-sub');
+  const sunoOpenEl = document.getElementById('suno-open');
+
+  const SPOTIFY_PLAYLIST_ID = '4XdSaPrftwgQ7KO2tkmmbv';
+  const SPOTIFY_EMBED_SRC =
+    `https://open.spotify.com/embed/playlist/${SPOTIFY_PLAYLIST_ID}?utm_source=generator`;
+
+  async function loadSunoPlaylist() {
+    if (!sunoTracksEl) return;
+    try {
+      const resp = await fetch('suno-playlist.json');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      sunoPlaylist = await resp.json();
+    } catch (e) {
+      console.warn('Suno playlist unavailable', e);
+      sunoTracksEl.innerHTML =
+        '<div class="src-offline">Playlist unavailable.</div>';
+      return;
+    }
+    if (sunoOpenEl && sunoPlaylist.url) sunoOpenEl.href = sunoPlaylist.url;
+    renderSunoTracks();
+  }
+
+  function renderSunoTracks() {
+    if (!sunoTracksEl || !sunoPlaylist) return;
+    const tracks = sunoPlaylist.tracks || [];
+
+    if (sunoSubEl) {
+      const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+      sunoSubEl.textContent = tracks.length
+        ? `${tracks.length} AI song${tracks.length === 1 ? '' : 's'} · ${formatTime(total)}`
+        : 'AI-generated for the Bombers';
+    }
+
+    if (!tracks.length) {
+      sunoTracksEl.innerHTML = '<div class="src-offline">No songs in this playlist yet.</div>';
+      return;
+    }
+
+    sunoTracksEl.innerHTML = '';
+    tracks.forEach((track, i) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'suno-row';
+      row.dataset.idx = String(i);
+
+      const art = track.art
+        ? `<img class="suno-art" src="${track.art}" alt="" loading="lazy" decoding="async">`
+        : '<span class="suno-art"></span>';
+
+      row.innerHTML = `
+        ${art}
+        <span class="suno-meta">
+          <span class="suno-title">${escapeHtml(track.title)}</span>
+          ${track.tags ? `<span class="suno-tags">${escapeHtml(track.tags)}</span>` : ''}
+        </span>
+        <span class="suno-dur">${track.duration ? formatTime(track.duration) : ''}</span>
+        <span class="suno-play">
+          <svg class="suno-play-icon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <svg class="suno-pause-icon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
+        </span>`;
+
+      row.addEventListener('click', () => toggleSunoTrack(i));
+      sunoTracksEl.appendChild(row);
+
+      // Hairline progress bar, revealed only while this track is playing.
+      const prog = document.createElement('div');
+      prog.className = 'suno-progress hidden';
+      prog.innerHTML = '<div class="suno-progress-fill"></div>';
+      sunoTracksEl.appendChild(prog);
+    });
+    syncSunoRows();
+  }
+
+  function toggleSunoTrack(i) {
+    if (i === sunoIdx && !sunoAudio.paused) {
+      sunoAudio.pause();
+      syncSunoRows();
+      return;
+    }
+    if (i === sunoIdx && sunoAudio.paused && sunoAudio.currentTime > 0) {
+      playSunoAudio();
+      return;
+    }
+    playSunoTrack(i);
+  }
+
+  function playSunoTrack(i) {
+    const tracks = (sunoPlaylist && sunoPlaylist.tracks) || [];
+    const track = tracks[i];
+    if (!track) return;
+
+    // Between-innings music never talks over a batter or the team intro.
+    if (playbackPhase || isPaused) {
+      stopAll();
+      if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
+      else updatePlaybackBar();
+    }
+    if (teamIntroAudio && !teamIntroAudio.paused) {
+      teamIntroAudio.pause();
+      teamIntroAudio.currentTime = 0;
+      setIntroPlaying(false);
+    }
+    stopSpotify();
+
+    sunoIdx = i;
+    if (!audioHasSrc(sunoAudio, track.file)) {
+      sunoAudio.src = track.file;
+      try { sunoAudio.load(); } catch (_) {}
+    }
+    sunoAudio.currentTime = 0;
+    sunoAudio.volume = 1;
+    playSunoAudio();
+  }
+
+  function playSunoAudio() {
+    const p = sunoAudio.play();
+    if (p && p.catch) p.catch((e) => console.warn('Suno playback failed', e));
+    // The keepalive tone exists to stop Bluetooth speakers sleeping between
+    // batters; real audio is playing now, so it isn't needed.
+    stopKeepalive();
+    syncSunoRows();
+  }
+
+  // Stop whatever between-innings source is playing. Called whenever a batter
+  // or the team intro takes the speakers.
+  function stopBetweenInnings() {
+    if (sunoAudio && !sunoAudio.paused) {
+      try { sunoAudio.pause(); } catch (_) {}
+    }
+    sunoIdx = -1;
+    if (sunoAudio) { try { sunoAudio.currentTime = 0; } catch (_) {} }
+    stopSpotify();
+    syncSunoRows();
+  }
+
+  // The Spotify embed is cross-origin, so there is no API to pause it.
+  // Re-assigning its src tears down the player, which does stop the sound.
+  //
+  // That costs a fresh embed load, so only do it when Spotify might actually
+  // be making noise. We can't read into the iframe, but clicking inside one
+  // moves document.activeElement to it — close enough to "the user has driven
+  // this player", and it means a full lineup doesn't reload the embed
+  // thirteen times over a spotty ballpark connection.
+  let spotifyTouched = false;
+
+  function watchSpotifyFocus() {
+    window.addEventListener('blur', () => {
+      if (spotifyFrame && document.activeElement === spotifyFrame) {
+        spotifyTouched = true;
+      }
+    });
+  }
+
+  function stopSpotify() {
+    if (!spotifyFrame || !spotifyTouched) return;
+    spotifyFrame.src = SPOTIFY_EMBED_SRC;
+    spotifyTouched = false;
+  }
+
+  // Reflect playback state on the rows: play/pause icon, gold highlight, and
+  // the progress hairline under the active track.
+  function syncSunoRows() {
+    if (!sunoTracksEl) return;
+    const playing = sunoAudio && !sunoAudio.paused && sunoIdx >= 0;
+    sunoTracksEl.querySelectorAll('.suno-row').forEach((row) => {
+      const i = Number(row.dataset.idx);
+      const isCurrent = i === sunoIdx;
+      row.classList.toggle('playing', isCurrent && playing);
+      const playIcon = row.querySelector('.suno-play-icon');
+      const pauseIcon = row.querySelector('.suno-pause-icon');
+      if (playIcon) playIcon.style.display = isCurrent && playing ? 'none' : '';
+      if (pauseIcon) pauseIcon.style.display = isCurrent && playing ? '' : 'none';
+      const prog = row.nextElementSibling;
+      if (prog && prog.classList.contains('suno-progress')) {
+        prog.classList.toggle('hidden', !isCurrent);
+        if (!isCurrent) {
+          const fill = prog.querySelector('.suno-progress-fill');
+          if (fill) fill.style.width = '0%';
+        }
+      }
+    });
+    if (playing) startSunoProgress(); else stopSunoProgress();
+  }
+
+  function startSunoProgress() {
+    if (sunoProgressRaf) return;
+    const tick = () => {
+      const row = sunoTracksEl && sunoTracksEl.querySelector('.suno-row.playing');
+      const fill = row && row.nextElementSibling
+        ? row.nextElementSibling.querySelector('.suno-progress-fill')
+        : null;
+      if (fill && sunoAudio.duration) {
+        fill.style.width = `${(sunoAudio.currentTime / sunoAudio.duration) * 100}%`;
+      }
+      sunoProgressRaf = requestAnimationFrame(tick);
+    };
+    sunoProgressRaf = requestAnimationFrame(tick);
+  }
+
+  function stopSunoProgress() {
+    if (sunoProgressRaf) cancelAnimationFrame(sunoProgressRaf);
+    sunoProgressRaf = null;
+  }
+
+  function bindSunoPlayer() {
+    if (!sunoAudio) return;
+    // Roll into the next song so a whole inning break plays unattended, and
+    // stop cleanly at the end of the list.
+    sunoAudio.addEventListener('ended', () => {
+      const tracks = (sunoPlaylist && sunoPlaylist.tracks) || [];
+      const next = sunoIdx + 1;
+      if (next < tracks.length) {
+        playSunoTrack(next);
+      } else {
+        sunoIdx = -1;
+        syncSunoRows();
+        startKeepalive();
+      }
+    });
+    sunoAudio.addEventListener('pause', () => { syncSunoRows(); startKeepalive(); });
+    sunoAudio.addEventListener('play', syncSunoRows);
+    sunoAudio.addEventListener('error', () => {
+      console.warn('Suno audio error', sunoAudio.currentSrc);
+    });
+  }
+
+  // Build the Spotify iframe the first time the Music tab is opened, so the
+  // rest of the app never pays for a third-party embed it isn't showing.
+  function ensureSpotifyEmbed() {
+    const host = document.getElementById('spotify-embed');
+    const offlineNote = document.getElementById('spotify-offline');
+    if (!host) return;
+
+    if (!navigator.onLine && !spotifyFrame) {
+      host.classList.add('hidden');
+      if (offlineNote) offlineNote.classList.remove('hidden');
+      return;
+    }
+    host.classList.remove('hidden');
+    if (offlineNote) offlineNote.classList.add('hidden');
+    if (spotifyFrame) return;
+
+    spotifyFrame = document.createElement('iframe');
+    spotifyFrame.src = SPOTIFY_EMBED_SRC;
+    spotifyFrame.title = 'Spotify playlist';
+    spotifyFrame.loading = 'lazy';
+    spotifyFrame.allow =
+      'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
+    spotifyFrame.setAttribute('frameborder', '0');
+    host.appendChild(spotifyFrame);
   }
 
   // === Per-player song overrides ===
@@ -1507,6 +1796,8 @@
   function playPlayer(player) {
     if (!player) return;
     stopAll();
+    // A batter's walk-up always wins the speakers over between-innings music.
+    stopBetweenInnings();
     currentPlayer = player;
     isPaused = false;
     saveCursor();

@@ -31,7 +31,7 @@
   <meta name="twitter:description" content="Announcements + walk-up music for every batter, every at-bat.">
   <meta name="twitter:image" content="https://mfiume.github.io/walkup-music/og-image.png?v=1">
 
-  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="styles.css?v=27">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -51,6 +51,7 @@
       <nav class="tab-group" role="tablist" aria-label="Sections">
         <button class="tab active" data-tab="lineup" role="tab" aria-selected="true">Lineup</button>
         <button class="tab" data-tab="roster" role="tab" aria-selected="false">Roster</button>
+        <button class="tab" data-tab="music" role="tab" aria-selected="false">Music</button>
         <button class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
       </nav>
     </div>
@@ -94,6 +95,52 @@
     </section>
 
     <section id="roster-view" class="view"></section>
+
+    <section id="music-view" class="view">
+      <p class="settings-desc" style="margin-top:4px">Full songs for between innings. Suno plays right here, even with no signal at the field. Spotify streams from your account.</p>
+
+      <!-- Suno: their playlist pages refuse to be framed, so instead the
+           tracks are mirrored locally and played by the app itself. -->
+      <section class="src-card" id="suno-card">
+        <header class="src-head">
+          <img class="src-logo" src="suno-logo.png" width="34" height="34" alt="Suno" decoding="async">
+          <div class="src-titles">
+            <div class="src-name">Suno</div>
+            <div class="src-sub" id="suno-sub">AI-generated for the Bombers</div>
+          </div>
+          <a class="src-link" id="suno-open" href="https://suno.com/playlist/f5dc5fd1-9dc5-4dd0-baaf-c9a19441e943" target="_blank" rel="noopener">
+            Open
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        </header>
+        <div id="suno-tracks" class="suno-tracks"></div>
+      </section>
+
+      <!-- Spotify: official embed. Needs a connection; plays full tracks for
+           listeners logged into Spotify, 30s previews otherwise. The iframe is
+           created on first visit to this tab so it costs nothing elsewhere. -->
+      <section class="src-card" id="spotify-card">
+        <header class="src-head">
+          <span class="src-logo spotify-logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="34" height="34" fill="#1ED760" role="img"><title>Spotify</title><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+          </span>
+          <div class="src-titles">
+            <div class="src-name">Spotify</div>
+            <div class="src-sub">Streaming playlist</div>
+          </div>
+          <a class="src-link" href="https://open.spotify.com/playlist/4XdSaPrftwgQ7KO2tkmmbv" target="_blank" rel="noopener">
+            Open
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        </header>
+        <div id="spotify-embed" class="spotify-embed"></div>
+        <div id="spotify-offline" class="src-offline hidden">Spotify needs a connection. The Suno playlist above still works offline.</div>
+      </section>
+    </section>
 
     <section id="settings-view" class="view">
       <h3>Walk-Up Mode</h3>
@@ -204,6 +251,7 @@
   <audio id="announcement-audio" preload="auto"></audio>
   <audio id="walkup-audio" preload="auto"></audio>
   <audio id="team-intro-audio" preload="auto" src="audio/simple/team-intro.wav"></audio>
+  <audio id="suno-audio" preload="none"></audio>
 
   <!-- Deezer search modal -->
   <div id="deezer-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="deezer-modal-title">
@@ -230,6 +278,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=40"></script>
+  <script src="app.js?v=41"></script>
 </body>
 </html>

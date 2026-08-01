@@ -1,0 +1,63 @@
+name: Sync Suno playlist
+
+# Keeps the Music tab in step with the Suno playlist. Songs added (or removed)
+# in Suno are mirrored into audio/suno/ + suno-playlist.json, committed, and
+# deployed — no local run needed.
+#
+# Deploy happens here rather than by leaning on deploy.yml, because a push made
+# with the built-in GITHUB_TOKEN deliberately does not trigger other workflows.
+
+on:
+  schedule:
+    - cron: '0 11 * * *'     # daily, 11:00 UTC (7am ET / 6am EST)
+  workflow_dispatch:          # "Run workflow" right after adding a song
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Mirror the playlist
+        run: python3 scripts/sync_suno_playlist.py
+
+      - name: Commit any changes
+        id: commit
+        run: |
+          if git diff --quiet -- suno-playlist.json audio/suno; then
+            echo "No playlist changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add suno-playlist.json audio/suno
+          git commit -m "Sync Suno playlist"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/configure-pages@v4
+        if: steps.commit.outputs.changed == 'true'
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.commit.outputs.changed == 'true'
+        with:
+          path: .
+
+      - id: deployment
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/deploy-pages@v4

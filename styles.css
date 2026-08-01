@@ -1487,3 +1487,198 @@ body.modal-open { overflow: hidden; }
   border-top: 1px solid var(--border);
   margin-top: 4px;
 }
+
+/* === Music view — between-innings playlists =================================
+   Two source cards, each badged with its own logo so there is never a
+   question about which service is playing. Suno's tracks are mirrored into
+   audio/suno/ and played by the app itself (their pages refuse to be framed,
+   and mirroring is what makes them work with no signal). Spotify uses the
+   official iframe embed. */
+
+.src-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.src-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 13px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent);
+}
+
+.src-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: block;
+}
+/* Spotify's mark is a green glyph on transparent; seat it on a dark disc so
+   it reads as a badge next to Suno's filled circle. */
+.spotify-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+.spotify-logo svg { width: 34px; height: 34px; display: block; }
+
+.src-titles { min-width: 0; flex: 1; }
+.src-name {
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+}
+.src-sub {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.src-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.src-link:hover {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: var(--accent-soft);
+}
+
+.src-offline {
+  font-size: 0.86rem;
+  color: var(--muted);
+  padding: 18px 14px;
+  text-align: center;
+}
+
+/* --- Suno track list --- */
+.suno-tracks { display: flex; flex-direction: column; }
+
+.suno-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 13px;
+  text-align: left;
+  color: var(--text);
+  border-top: 1px solid rgba(31, 61, 44, 0.55);
+  transition: background 0.15s;
+}
+.suno-row:first-child { border-top: 0; }
+.suno-row:hover { background: var(--panel-2); }
+.suno-row:active { background: var(--panel-2); }
+.suno-row.playing {
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.13), rgba(var(--accent-rgb), 0.04));
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.suno-art {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+
+/* Column, and the children are blocks: an inline span can't be ellipsised, so
+   a long title would otherwise run straight under the duration on a 320px
+   phone instead of truncating. */
+.suno-meta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.suno-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suno-row.playing .suno-title { color: var(--accent); }
+.suno-tags {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suno-dur {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.suno-play {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.suno-row:hover .suno-play {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
+.suno-row.playing .suno-play {
+  background: var(--accent);
+  color: var(--green);
+  border-color: var(--accent);
+}
+
+/* Progress hairline under the track that's currently playing. */
+.suno-progress {
+  height: 2px;
+  background: rgba(var(--accent-rgb), 0.18);
+}
+.suno-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+
+/* --- Spotify embed --- */
+.spotify-embed { padding: 12px 13px 13px; }
+.spotify-embed iframe {
+  display: block;
+  width: 100%;
+  height: 352px;
+  border: 0;
+  border-radius: 12px;
+}

@@ -14,7 +14,7 @@
 // player once). Deezer preview clips are stored separately in IndexedDB by
 // app.js and already work offline.
 
-const CACHE = 'walkup-simple-v6-offline';
+const CACHE = 'walkup-simple-v7-innings';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -25,6 +25,7 @@ const CRITICAL = [
   'styles.css',
   'roster.json',
   'audio/simple/library.json',
+  'suno-playlist.json',
 ];
 
 // Nice-to-have shell assets — best-effort so a single 404 can't break install.
@@ -36,6 +37,7 @@ const OPTIONAL = [
   'icon-512.png',
   'icon-bloordale-b.png',
   'og-image.png',
+  'suno-logo.png',
 ];
 
 // Every announcement + every library track + the team intro. Precaching these
@@ -76,13 +78,31 @@ const AUDIO = [
   'audio/simple/team-intro.wav',
 ];
 
+// Between-innings Suno tracks are read out of suno-playlist.json rather than
+// listed here, so songs added to the Suno playlist (and mirrored by
+// scripts/sync_suno_playlist.py) become offline-ready with no edit to this
+// file. Best-effort: a missing or malformed manifest just means no extras.
+async function sunoAudioFiles() {
+  try {
+    const resp = await fetch('suno-playlist.json', { cache: 'no-store' });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return (data.tracks || [])
+      .flatMap((t) => [t.file, t.art])
+      .filter(Boolean);
+  } catch (_) {
+    return [];
+  }
+}
+
 // Install: precache the shell (critical, must succeed) then everything else
 // best-effort. skipWaiting so a fresh SW takes over without a manual reload.
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     await cache.addAll(CRITICAL);
-    await Promise.allSettled([...OPTIONAL, ...AUDIO].map((u) => cache.add(u)));
+    const extras = [...OPTIONAL, ...AUDIO, ...(await sunoAudioFiles())];
+    await Promise.allSettled(extras.map((u) => cache.add(u)));
     await self.skipWaiting();
   })());
 });

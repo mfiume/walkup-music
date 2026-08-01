@@ -114,6 +114,15 @@ def main() -> int:
         })
         print(f'  {"↓" if got_audio else "·"} {clip["title"]}  →  {audio_rel}')
 
+    # Drop files for songs that are no longer in the playlist, so removing a
+    # song in Suno doesn't leave 4 MB of dead weight in the repo forever.
+    keep = {ROOT / t["file"] for t in tracks}
+    keep |= {ROOT / t["art"] for t in tracks if t["art"]}
+    for existing in list(AUDIO_DIR.glob("*.mp3")) + list(ART_DIR.glob("*")):
+        if existing.is_file() and existing not in keep:
+            existing.unlink()
+            print(f"  ✕ removed {existing.relative_to(ROOT)} (no longer in playlist)")
+
     manifest = {
         "id": PLAYLIST_ID,
         "name": playlist.get("name") or "Suno",
@@ -123,12 +132,6 @@ def main() -> int:
     }
     MANIFEST.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     print(f"Wrote {MANIFEST.relative_to(ROOT)} ({len(tracks)} tracks)")
-
-    # The service worker precaches a hardcoded audio list; print the block to
-    # paste so a new track can't silently become the one thing that needs signal.
-    print("\nsw.js — SUNO list:")
-    for t in tracks:
-        print(f"  '{t['file']}',")
     return 0
 
 
