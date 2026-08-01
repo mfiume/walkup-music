@@ -63,6 +63,26 @@
       "duration": 165.0,
       "tags": "indie rock, anthem",
       "url": "https://suno.com/song/1cc6eee8-a757-4c2a-81ed-89ae564ed174"
+    },
+    {
+      "id": "c083773f-1dc4-4e02-b8d7-29ded1c08d7d",
+      "title": "He Got Em",
+      "caption": "",
+      "file": "audio/suno/he-got-em.mp3",
+      "art": "audio/suno/art/he-got-em.jpeg",
+      "duration": 159.8,
+      "tags": "hip hop, electric",
+      "url": "https://suno.com/song/c083773f-1dc4-4e02-b8d7-29ded1c08d7d"
+    },
+    {
+      "id": "33dcbc54-001a-47e3-a7c9-b8cc6f9cfa3d",
+      "title": "He Got Him",
+      "caption": "",
+      "file": "audio/suno/he-got-him.mp3",
+      "art": "audio/suno/art/he-got-him.jpeg",
+      "duration": 192.6,
+      "tags": "country-rock, anthem",
+      "url": "https://suno.com/song/33dcbc54-001a-47e3-a7c9-b8cc6f9cfa3d"
     }
   ]
 }
