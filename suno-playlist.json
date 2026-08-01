@@ -57,6 +57,15 @@
       "duration": 224.0,
       "tags": "rap, melodic rap, downtempo",
       "url": "https://suno.com/song/81c1322c-227d-4e18-8829-da7224abcec0"
+    },
+    {
+      "id": "1cc6eee8-a757-4c2a-81ed-89ae564ed174",
+      "title": "In a Pickle",
+      "file": "audio/suno/in-a-pickle.mp3",
+      "art": "audio/suno/art/in-a-pickle.jpeg",
+      "duration": 165.0,
+      "tags": "indie rock, anthem",
+      "url": "https://suno.com/song/1cc6eee8-a757-4c2a-81ed-89ae564ed174"
     }
   ]
 }
