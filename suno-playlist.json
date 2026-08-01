@@ -6,9 +6,10 @@
   "tracks": [
     {
       "id": "71d2cb9a-5be0-4ec3-857e-e5ff952a2310",
-      "title": "Green Yellow Bombers",
-      "file": "audio/suno/green-yellow-bombers.mp3",
-      "art": "audio/suno/art/green-yellow-bombers.jpeg",
+      "title": "Green and Yellow",
+      "caption": "Team Hype Song",
+      "file": "audio/suno/green-and-yellow.mp3",
+      "art": "audio/suno/art/green-and-yellow.jpeg",
       "duration": 148.7,
       "tags": "rap, hip hop, pop rap",
       "url": "https://suno.com/song/71d2cb9a-5be0-4ec3-857e-e5ff952a2310"
@@ -16,6 +17,7 @@
     {
       "id": "0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b",
       "title": "Strike Zone",
+      "caption": "",
       "file": "audio/suno/strike-zone.mp3",
       "art": "audio/suno/art/strike-zone.jpeg",
       "duration": 200.0,
@@ -25,6 +27,7 @@
     {
       "id": "eefd3aba-4d56-495a-bc9c-2131876c8a47",
       "title": "Bloor Dale Glow",
+      "caption": "",
       "file": "audio/suno/bloor-dale-glow.mp3",
       "art": "audio/suno/art/bloor-dale-glow.jpeg",
       "duration": 139.2,
@@ -33,9 +36,10 @@
     },
     {
       "id": "66acb5f4-862e-4ef1-9c4f-f3cb6bfa79ed",
-      "title": "Bomber Crest",
-      "file": "audio/suno/bomber-crest.mp3",
-      "art": "audio/suno/art/bomber-crest.jpeg",
+      "title": "Split the Seams",
+      "caption": "",
+      "file": "audio/suno/split-the-seams.mp3",
+      "art": "audio/suno/art/split-the-seams.jpeg",
       "duration": 196.3,
       "tags": "",
       "url": "https://suno.com/song/66acb5f4-862e-4ef1-9c4f-f3cb6bfa79ed"
@@ -43,6 +47,7 @@
     {
       "id": "bb9c883b-41ed-4d9b-b3e8-badcb09c6a0f",
       "title": "El demonio ha vuelto",
+      "caption": "Emmett Hype Song",
       "file": "audio/suno/el-demonio-ha-vuelto.mp3",
       "art": "audio/suno/art/el-demonio-ha-vuelto.jpeg",
       "duration": 89.8,
@@ -52,6 +57,7 @@
     {
       "id": "81c1322c-227d-4e18-8829-da7224abcec0",
       "title": "Go Yard",
+      "caption": "",
       "file": "audio/suno/go-yard.mp3",
       "art": "audio/suno/art/go-yard.jpeg",
       "duration": 224.0,
@@ -61,6 +67,7 @@
     {
       "id": "1cc6eee8-a757-4c2a-81ed-89ae564ed174",
       "title": "In a Pickle",
+      "caption": "",
       "file": "audio/suno/in-a-pickle.mp3",
       "art": "audio/suno/art/in-a-pickle.jpeg",
       "duration": 165.0,

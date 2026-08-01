@@ -446,11 +446,15 @@
         ? `<img class="suno-art" src="${track.art}" alt="" loading="lazy" decoding="async">`
         : '<span class="suno-art"></span>';
 
+      // Subtext is the caption written on the song in Suno. Songs without one
+      // fall back to their style tags so the row still says something.
+      const sub = (track.caption || '').trim() || track.tags || '';
+
       row.innerHTML = `
         ${art}
         <span class="suno-meta">
           <span class="suno-title">${escapeHtml(track.title)}</span>
-          ${track.tags ? `<span class="suno-tags">${escapeHtml(track.tags)}</span>` : ''}
+          ${sub ? `<span class="suno-tags">${escapeHtml(sub)}</span>` : ''}
         </span>
         <span class="suno-dur">${track.duration ? formatTime(track.duration) : ''}</span>
         <span class="suno-play">
