@@ -157,9 +157,9 @@ def main() -> int:
         tracks.append({
             "id": clip["id"],
             "title": clip["title"],
-            # The caption is the one-line note set on the song in Suno. It's
-            # what the app shows under the title; display_tags is kept as the
-            # fallback for songs that don't have one written yet.
+            # The caption is the one-line note set on the song in Suno, and the
+            # only subtext the app shows. `tags` below is mirrored for
+            # reference only — the UI deliberately never displays it.
             "caption": (clip.get("caption") or "").strip(),
             "file": audio_rel,
             "art": art_rel,

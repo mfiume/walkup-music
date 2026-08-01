@@ -446,9 +446,11 @@
         ? `<img class="suno-art" src="${track.art}" alt="" loading="lazy" decoding="async">`
         : '<span class="suno-art"></span>';
 
-      // Subtext is the caption written on the song in Suno. Songs without one
-      // fall back to their style tags so the row still says something.
-      const sub = (track.caption || '').trim() || track.tags || '';
+      // Subtext is the caption written on the song in Suno, or nothing. Style
+      // tags are deliberately not shown: they describe the generator, not the
+      // song, and a row with just its title reads better than one labelled
+      // "pop rap, hip hop, rap".
+      const sub = (track.caption || '').trim();
 
       row.innerHTML = `
         ${art}
