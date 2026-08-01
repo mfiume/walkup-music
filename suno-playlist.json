@@ -27,7 +27,7 @@
     {
       "id": "66acb5f4-862e-4ef1-9c4f-f3cb6bfa79ed",
       "title": "Split the Seams",
-      "caption": "Pitcher Hype Song",
+      "caption": "Batter Hype Song",
       "file": "audio/suno/split-the-seams.mp3",
       "art": "audio/suno/art/split-the-seams.jpeg",
       "duration": 196.3,
@@ -57,7 +57,7 @@
     {
       "id": "1cc6eee8-a757-4c2a-81ed-89ae564ed174",
       "title": "In a Pickle",
-      "caption": "",
+      "caption": "Devin Hype Song",
       "file": "audio/suno/in-a-pickle.mp3",
       "art": "audio/suno/art/in-a-pickle.jpeg",
       "duration": 165.0,
