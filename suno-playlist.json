@@ -1,0 +1,62 @@
+{
+  "id": "f5dc5fd1-9dc5-4dd0-baaf-c9a19441e943",
+  "name": "Bloordale",
+  "url": "https://suno.com/playlist/f5dc5fd1-9dc5-4dd0-baaf-c9a19441e943",
+  "creator": "Fumes",
+  "tracks": [
+    {
+      "id": "71d2cb9a-5be0-4ec3-857e-e5ff952a2310",
+      "title": "Green Yellow Bombers",
+      "file": "audio/suno/green-yellow-bombers.mp3",
+      "art": "audio/suno/art/green-yellow-bombers.jpeg",
+      "duration": 148.7,
+      "tags": "rap, hip hop, pop rap",
+      "url": "https://suno.com/song/71d2cb9a-5be0-4ec3-857e-e5ff952a2310"
+    },
+    {
+      "id": "0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b",
+      "title": "Strike Zone",
+      "file": "audio/suno/strike-zone.mp3",
+      "art": "audio/suno/art/strike-zone.jpeg",
+      "duration": 200.0,
+      "tags": "",
+      "url": "https://suno.com/song/0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b"
+    },
+    {
+      "id": "eefd3aba-4d56-495a-bc9c-2131876c8a47",
+      "title": "Bloor Dale Glow",
+      "file": "audio/suno/bloor-dale-glow.mp3",
+      "art": "audio/suno/art/bloor-dale-glow.jpeg",
+      "duration": 139.2,
+      "tags": "pop rap, hip hop, rap",
+      "url": "https://suno.com/song/eefd3aba-4d56-495a-bc9c-2131876c8a47"
+    },
+    {
+      "id": "66acb5f4-862e-4ef1-9c4f-f3cb6bfa79ed",
+      "title": "Bomber Crest",
+      "file": "audio/suno/bomber-crest.mp3",
+      "art": "audio/suno/art/bomber-crest.jpeg",
+      "duration": 196.3,
+      "tags": "",
+      "url": "https://suno.com/song/66acb5f4-862e-4ef1-9c4f-f3cb6bfa79ed"
+    },
+    {
+      "id": "bb9c883b-41ed-4d9b-b3e8-badcb09c6a0f",
+      "title": "El demonio ha vuelto",
+      "file": "audio/suno/el-demonio-ha-vuelto.mp3",
+      "art": "audio/suno/art/el-demonio-ha-vuelto.jpeg",
+      "duration": 89.8,
+      "tags": "",
+      "url": "https://suno.com/song/bb9c883b-41ed-4d9b-b3e8-badcb09c6a0f"
+    },
+    {
+      "id": "81c1322c-227d-4e18-8829-da7224abcec0",
+      "title": "Go Yard",
+      "file": "audio/suno/go-yard.mp3",
+      "art": "audio/suno/art/go-yard.jpeg",
+      "duration": 224.0,
+      "tags": "rap, melodic rap, downtempo",
+      "url": "https://suno.com/song/81c1322c-227d-4e18-8829-da7224abcec0"
+    }
+  ]
+}
