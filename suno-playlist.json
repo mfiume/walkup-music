@@ -15,16 +15,6 @@
       "url": "https://suno.com/song/71d2cb9a-5be0-4ec3-857e-e5ff952a2310"
     },
     {
-      "id": "eefd3aba-4d56-495a-bc9c-2131876c8a47",
-      "title": "Bloor Dale Glow",
-      "caption": "",
-      "file": "audio/suno/bloor-dale-glow.mp3",
-      "art": "audio/suno/art/bloor-dale-glow.jpeg",
-      "duration": 139.2,
-      "tags": "pop rap, hip hop, rap",
-      "url": "https://suno.com/song/eefd3aba-4d56-495a-bc9c-2131876c8a47"
-    },
-    {
       "id": "0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b",
       "title": "Strike Zone",
       "caption": "Pitcher Hype Song",
@@ -37,7 +27,7 @@
     {
       "id": "66acb5f4-862e-4ef1-9c4f-f3cb6bfa79ed",
       "title": "Split the Seams",
-      "caption": "",
+      "caption": "Pitcher Hype Song",
       "file": "audio/suno/split-the-seams.mp3",
       "art": "audio/suno/art/split-the-seams.jpeg",
       "duration": 196.3,
