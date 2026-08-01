@@ -14,7 +14,11 @@
 // player once). Deezer preview clips are stored separately in IndexedDB by
 // app.js and already work offline.
 
-const CACHE = 'walkup-simple-v7-innings';
+// Bumping this name is what evicts a poisoned cache. v8 exists specifically to
+// throw away the 132-byte LFS pointer files that were briefly live and got
+// stored as if they were songs — cache-first would otherwise serve them
+// forever on any device that saw them.
+const CACHE = 'walkup-simple-v8-innings';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -102,7 +106,12 @@ self.addEventListener('install', (event) => {
     const cache = await caches.open(CACHE);
     await cache.addAll(CRITICAL);
     const extras = [...OPTIONAL, ...AUDIO, ...(await sunoAudioFiles())];
-    await Promise.allSettled(extras.map((u) => cache.add(u)));
+    // Deliberately not cache.add(): that stores whatever comes back, including
+    // a truncated body, and cache-first would then serve it forever.
+    await Promise.allSettled(extras.map(async (u) => {
+      const res = await fetch(u);
+      if (res && res.ok && safeToCache(u, res)) await cache.put(u, res);
+    }));
     await self.skipWaiting();
   })());
 });
@@ -120,19 +129,78 @@ function isAudio(url) {
   return url.pathname.includes('/audio/');
 }
 
+// Nothing we serve as audio is anywhere near this small. A response under it
+// is a truncated or error body (an LFS pointer file is 132 bytes), and caching
+// one is worse than not caching at all: cache-first means a broken clip would
+// be served for good, long after the server was fixed.
+const MIN_AUDIO_BYTES = 10000;
+
+// Only audio gets the size floor — the shell legitimately includes small files
+// (manifest.json is ~500 bytes, icon.svg ~1 KB).
+function safeToCache(url, res) {
+  if (!String(url).includes('/audio/')) return true;
+  const len = parseInt(res.headers.get('content-length') || '', 10);
+  return !Number.isFinite(len) || len >= MIN_AUDIO_BYTES;
+}
+
 // Cache-first: serve the cached copy if we have it; otherwise fetch, cache,
 // and return. Used for immutable audio.
+//
+// iOS Safari asks for media with a Range header and will not play a media
+// element that gets a plain 200 back for a ranged request. The Cache API also
+// refuses to store a 206. So: always key the cache off the un-ranged URL, keep
+// exactly one whole copy, and slice 206s out of it here.
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE);
-  const hit = await cache.match(request);
-  if (hit) return hit;
-  try {
-    const res = await fetch(request);
-    if (res && res.ok) cache.put(request, res.clone());
-    return res;
-  } catch (_) {
-    return (await cache.match(request)) || Response.error();
+  const range = request.headers.get('range');
+  const full = range ? new Request(request.url, { credentials: 'omit' }) : request;
+
+  let hit = await cache.match(full);
+  if (!hit) {
+    try {
+      const res = await fetch(full);
+      if (res && res.ok && safeToCache(full.url, res)) cache.put(full, res.clone());
+      hit = res;
+    } catch (_) {
+      hit = await cache.match(full);
+    }
   }
+  if (!hit) return Response.error();
+  return range ? sliceRange(hit, range) : hit;
+}
+
+// Build a 206 out of a full cached response. Handles `bytes=N-`, `bytes=N-M`
+// and the suffix form `bytes=-N`.
+async function sliceRange(response, rangeHeader) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!m || (m[1] === '' && m[2] === '')) return response;
+
+  const buf = await response.arrayBuffer();
+  const total = buf.byteLength;
+
+  let start;
+  let end;
+  if (m[1] === '') {
+    start = Math.max(0, total - parseInt(m[2], 10));
+    end = total - 1;
+  } else {
+    start = parseInt(m[1], 10);
+    end = m[2] === '' ? total - 1 : Math.min(parseInt(m[2], 10), total - 1);
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= total) {
+    return new Response(null, {
+      status: 416,
+      headers: { 'Content-Range': `bytes */${total}` },
+    });
+  }
+
+  const body = buf.slice(start, end + 1);
+  const headers = new Headers(response.headers);
+  headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
+  headers.set('Content-Length', String(body.byteLength));
+  headers.set('Accept-Ranges', 'bytes');
+  return new Response(body, { status: 206, statusText: 'Partial Content', headers });
 }
 
 // Network-first: try the network (and refresh the cache) so online users get

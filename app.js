@@ -150,12 +150,6 @@
       const offline = !navigator.onLine;
       if (bar) bar.classList.toggle('hidden', !offline);
       document.body.classList.toggle('is-offline', offline);
-      // Spotify can't load without a connection; build (or reveal) the embed
-      // as soon as one comes back and the Music tab is showing.
-      const musicView = document.getElementById('music-view');
-      if (!offline && musicView && musicView.classList.contains('active')) {
-        ensureSpotifyEmbed();
-      }
     };
     window.addEventListener('online', sync);
     window.addEventListener('offline', sync);
@@ -207,7 +201,6 @@
     }
 
     bindSunoPlayer();
-    watchSpotifyFocus();
     // Fire-and-forget: the Music tab fills in as soon as the manifest lands.
     loadSunoPlaylist();
 
@@ -318,9 +311,6 @@
       });
     }
 
-    // The Spotify embed is only built once the Music tab is actually opened.
-    if (tabName === 'music') ensureSpotifyEmbed();
-
     if (pushUrl) {
       // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,
       // but a local file:// or root deploy gets clean /lineup paths too.
@@ -393,29 +383,25 @@
   //
   // Two sources, each clearly badged:
   //
+  //   Spotify — a link out, nothing more. Their iframe embed caps playback at
+  //             30-second previews unless the listener is signed in with
+  //             Premium, which is useless for filling an inning break, so the
+  //             card is just the badge and an Open button.
   //   Suno    — their playlist pages send `frame-ancestors 'none'`, so there
   //             is no embed to drop in and their API sends no CORS headers
   //             either. scripts/sync_suno_playlist.py mirrors the playlist
   //             into audio/suno/ + suno-playlist.json at build time, and the
   //             app plays those files itself. That is what lets between-
   //             innings music work on a field with no signal.
-  //   Spotify — the official iframe embed, created the first time this tab is
-  //             opened. We can't reach inside it, but reloading its src is
-  //             enough to silence it when a batter steps up.
 
   let sunoPlaylist = null;         // { name, url, tracks: [...] }
   let sunoIdx = -1;                // index into sunoPlaylist.tracks; -1 = idle
   let sunoProgressRaf = null;
-  let spotifyFrame = null;         // created lazily on first Music tab visit
 
   const sunoAudio = document.getElementById('suno-audio');
   const sunoTracksEl = document.getElementById('suno-tracks');
   const sunoSubEl = document.getElementById('suno-sub');
   const sunoOpenEl = document.getElementById('suno-open');
-
-  const SPOTIFY_PLAYLIST_ID = '4XdSaPrftwgQ7KO2tkmmbv';
-  const SPOTIFY_EMBED_SRC =
-    `https://open.spotify.com/embed/playlist/${SPOTIFY_PLAYLIST_ID}?utm_source=generator`;
 
   async function loadSunoPlaylist() {
     if (!sunoTracksEl) return;
@@ -513,15 +499,17 @@
       teamIntroAudio.currentTime = 0;
       setIntroPlaying(false);
     }
-    stopSpotify();
 
     sunoIdx = i;
     if (!audioHasSrc(sunoAudio, track.file)) {
       sunoAudio.src = track.file;
       try { sunoAudio.load(); } catch (_) {}
     }
-    sunoAudio.currentTime = 0;
-    sunoAudio.volume = 1;
+    // Right after load() the element has no timeline yet, and iOS throws
+    // InvalidStateError on a currentTime write in that state. Unguarded, that
+    // exception happens before play() and the track silently never starts.
+    try { sunoAudio.currentTime = 0; } catch (_) {}
+    sunoAudio.volume = 1;   // no-op on iOS (hardware-controlled), harmless
     playSunoAudio();
   }
 
@@ -534,40 +522,17 @@
     syncSunoRows();
   }
 
-  // Stop whatever between-innings source is playing. Called whenever a batter
-  // or the team intro takes the speakers.
+  // Stop between-innings music. Called whenever a batter or the team intro
+  // takes the speakers. (Spotify plays in its own app, so there is nothing of
+  // ours to stop there — the phone's own audio focus handles that.)
   function stopBetweenInnings() {
-    if (sunoAudio && !sunoAudio.paused) {
+    if (!sunoAudio) return;
+    if (!sunoAudio.paused) {
       try { sunoAudio.pause(); } catch (_) {}
     }
     sunoIdx = -1;
-    if (sunoAudio) { try { sunoAudio.currentTime = 0; } catch (_) {} }
-    stopSpotify();
+    try { sunoAudio.currentTime = 0; } catch (_) {}
     syncSunoRows();
-  }
-
-  // The Spotify embed is cross-origin, so there is no API to pause it.
-  // Re-assigning its src tears down the player, which does stop the sound.
-  //
-  // That costs a fresh embed load, so only do it when Spotify might actually
-  // be making noise. We can't read into the iframe, but clicking inside one
-  // moves document.activeElement to it — close enough to "the user has driven
-  // this player", and it means a full lineup doesn't reload the embed
-  // thirteen times over a spotty ballpark connection.
-  let spotifyTouched = false;
-
-  function watchSpotifyFocus() {
-    window.addEventListener('blur', () => {
-      if (spotifyFrame && document.activeElement === spotifyFrame) {
-        spotifyTouched = true;
-      }
-    });
-  }
-
-  function stopSpotify() {
-    if (!spotifyFrame || !spotifyTouched) return;
-    spotifyFrame.src = SPOTIFY_EMBED_SRC;
-    spotifyTouched = false;
   }
 
   // Reflect playback state on the rows: play/pause icon, gold highlight, and
@@ -635,32 +600,6 @@
     sunoAudio.addEventListener('error', () => {
       console.warn('Suno audio error', sunoAudio.currentSrc);
     });
-  }
-
-  // Build the Spotify iframe the first time the Music tab is opened, so the
-  // rest of the app never pays for a third-party embed it isn't showing.
-  function ensureSpotifyEmbed() {
-    const host = document.getElementById('spotify-embed');
-    const offlineNote = document.getElementById('spotify-offline');
-    if (!host) return;
-
-    if (!navigator.onLine && !spotifyFrame) {
-      host.classList.add('hidden');
-      if (offlineNote) offlineNote.classList.remove('hidden');
-      return;
-    }
-    host.classList.remove('hidden');
-    if (offlineNote) offlineNote.classList.add('hidden');
-    if (spotifyFrame) return;
-
-    spotifyFrame = document.createElement('iframe');
-    spotifyFrame.src = SPOTIFY_EMBED_SRC;
-    spotifyFrame.title = 'Spotify playlist';
-    spotifyFrame.loading = 'lazy';
-    spotifyFrame.allow =
-      'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
-    spotifyFrame.setAttribute('frameborder', '0');
-    host.appendChild(spotifyFrame);
   }
 
   // === Per-player song overrides ===
