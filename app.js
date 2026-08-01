@@ -426,8 +426,8 @@
     if (sunoSubEl) {
       const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
       sunoSubEl.textContent = tracks.length
-        ? `${tracks.length} AI song${tracks.length === 1 ? '' : 's'} · ${formatTime(total)}`
-        : 'AI-generated for the Bombers';
+        ? `${tracks.length} song${tracks.length === 1 ? '' : 's'} · ${formatTime(total)}`
+        : 'Between-innings playlist';
     }
 
     if (!tracks.length) {
