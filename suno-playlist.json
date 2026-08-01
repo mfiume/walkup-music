@@ -15,16 +15,6 @@
       "url": "https://suno.com/song/71d2cb9a-5be0-4ec3-857e-e5ff952a2310"
     },
     {
-      "id": "0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b",
-      "title": "Strike Zone",
-      "caption": "",
-      "file": "audio/suno/strike-zone.mp3",
-      "art": "audio/suno/art/strike-zone.jpeg",
-      "duration": 200.0,
-      "tags": "",
-      "url": "https://suno.com/song/0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b"
-    },
-    {
       "id": "eefd3aba-4d56-495a-bc9c-2131876c8a47",
       "title": "Bloor Dale Glow",
       "caption": "",
@@ -33,6 +23,16 @@
       "duration": 139.2,
       "tags": "pop rap, hip hop, rap",
       "url": "https://suno.com/song/eefd3aba-4d56-495a-bc9c-2131876c8a47"
+    },
+    {
+      "id": "0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b",
+      "title": "Strike Zone",
+      "caption": "Pitcher Hype Song",
+      "file": "audio/suno/strike-zone.mp3",
+      "art": "audio/suno/art/strike-zone.jpeg",
+      "duration": 200.0,
+      "tags": "",
+      "url": "https://suno.com/song/0a93e1cb-8a5a-4006-ba1b-f10173a8cd9b"
     },
     {
       "id": "66acb5f4-862e-4ef1-9c4f-f3cb6bfa79ed",
