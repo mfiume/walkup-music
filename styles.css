@@ -1589,9 +1589,11 @@ body.modal-open { overflow: hidden; }
 .suno-row:first-child { border-top: 0; }
 .suno-row:hover { background: var(--panel-2); }
 .suno-row:active { background: var(--panel-2); }
+/* No left accent bar: it met the gold progress hairline under the row at the
+   bottom-left corner and the two read as one bent line. The tinted background,
+   gold title and filled play button already carry the state. */
 .suno-row.playing {
   background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.13), rgba(var(--accent-rgb), 0.04));
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .suno-art {
