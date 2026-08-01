@@ -24,9 +24,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: simple
+          # Runners ship git-lfs. Audio in this repo is plain binary on purpose
+          # (Pages can't serve LFS — see .gitattributes), so keep LFS out of the
+          # way entirely rather than let it rewrite tracks into pointer files.
+          lfs: false
 
       - name: Mirror the playlist
         run: python3 scripts/sync_suno_playlist.py
+
+      # A track that got turned into an LFS pointer still looks like a normal
+      # file to `git diff`, and Pages would serve the pointer text as the song.
+      # Fail loudly here rather than deploy silence to the ball field.
+      - name: Reject LFS pointers
+        run: |
+          bad=0
+          for f in audio/suno/*.mp3; do
+            size=$(wc -c < "$f")
+            if [ "$size" -lt 100000 ] || head -c 40 "$f" | grep -q 'git-lfs.github.com'; then
+              echo "::error file=$f::$f is $size bytes — looks like an LFS pointer, not audio"
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ] || exit 1
 
       - name: Commit any changes
         run: |

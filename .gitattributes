@@ -1,1 +1,12 @@
-*.mp3 filter=lfs diff=lfs merge=lfs -text
+# No Git LFS here, deliberately.
+#
+# This site is served by GitHub Pages, and Pages does not resolve LFS objects:
+# it returns the pointer file as the response body, so every song becomes a
+# 132-byte text file and playback breaks. The audio is committed as ordinary
+# binary instead.
+#
+# There used to be a `*.mp3 filter=lfs` rule here. It looked harmless only
+# because git-lfs isn't installed on the machine this repo is usually edited
+# from. The first commit made from a machine that *does* have git-lfs (a GitHub
+# Actions runner, during a Suno playlist sync) silently rewrote every track to
+# a pointer and took the between-innings player down. Don't reintroduce it.
