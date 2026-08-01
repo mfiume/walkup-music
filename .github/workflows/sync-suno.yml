@@ -7,8 +7,10 @@ name: Sync Suno playlist
 
 on:
   schedule:
-    - cron: '0 11 * * *'     # daily, 11:00 UTC (7am ET / 6am EST)
-  workflow_dispatch:          # "Run workflow" right after adding a song
+    # Every 2 hours. A run that finds nothing new costs one API call and makes
+    # no commit, so the only cost of the tighter cadence is CI minutes.
+    - cron: '0 */2 * * *'
+  workflow_dispatch:          # "Run workflow" to pick up a song immediately
 
 permissions:
   contents: write

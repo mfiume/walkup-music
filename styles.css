@@ -1679,3 +1679,36 @@ body.modal-open { overflow: hidden; }
 /* The Spotify card is a header and nothing else, so its divider would land on
    the card's own bottom edge and read as a double line. */
 .src-head:last-child { border-bottom: 0; }
+
+/* === Batting-order chip ====================================================
+   Shown wherever a batter appears outside the lineup list itself. The lineup
+   already numbers its own rows, but everywhere else the only number on screen
+   is the jersey ("#12"), so the order is written as an ordinal — "3rd" can't
+   be misread as a jersey number the way a bare "3" could. No chip means the
+   player isn't in the order. */
+.bat-order {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(var(--green-rgb), 0.45);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  color: var(--accent);
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+/* Roster: name and chip share a row, and the name keeps its ellipsis. */
+.roster-nameline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.roster-nameline .roster-name { min-width: 0; }
+
+/* Now Playing on-deck rows: chip sits ahead of the jersey number. */
+.np-role-name .bat-order { margin-right: 8px; }

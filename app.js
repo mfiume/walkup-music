@@ -1320,7 +1320,10 @@
       card.innerHTML = `
         <span class="roster-num">#${p.number}</span>
         <span class="roster-info">
-          <span class="roster-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
+          <span class="roster-nameline">
+            <span class="roster-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
+            ${orderChipHtml(p)}
+          </span>
           <span class="roster-song">${songLabelHtml(p)}</span>
         </span>
         <span class="roster-play" aria-hidden="true">
@@ -1334,6 +1337,44 @@
       });
       rosterView.appendChild(card);
     });
+  }
+
+  // === Batting order helpers ===
+  // The jersey number and the spot in the order are two different numbers, and
+  // "#12" is already spoken for by the jersey. Everything outside the lineup
+  // list therefore shows the order as an ordinal ("3rd") so the two can never
+  // be read as the same thing.
+  function battingOrderPos(player) {
+    if (!player) return 0;
+    const i = lineup.indexOf(player.number);
+    return i < 0 ? 0 : i + 1;
+  }
+
+  function ordinal(n) {
+    // 11th/12th/13th are the exceptions to the 1st/2nd/3rd pattern.
+    const teens = n % 100;
+    if (teens >= 11 && teens <= 13) return `${n}th`;
+    switch (n % 10) {
+      case 1: return `${n}st`;
+      case 2: return `${n}nd`;
+      case 3: return `${n}rd`;
+      default: return `${n}th`;
+    }
+  }
+
+  // Chip markup, or '' for anyone not in the order (absence reads as "not
+  // batting", which is exactly what it means).
+  function orderChipHtml(player) {
+    const pos = battingOrderPos(player);
+    return pos ? `<span class="bat-order" title="Bats ${ordinal(pos)}">${ordinal(pos)}</span>` : '';
+  }
+
+  // Views that show an order position have to be redrawn when the order
+  // changes, not just the lineup list itself. (Settings → Songs deliberately
+  // has no chip: that row already truncates long names on a phone, and a
+  // chip there was clipped to a sliver.)
+  function renderOrderDependent() {
+    renderRoster();
   }
 
   // === Lineup ===
@@ -1408,6 +1449,7 @@
         // Full re-render to reset event closures with the new order
         renderLineup();
         updatePlaybackBar();
+        renderOrderDependent();
       });
       row.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -1489,9 +1531,14 @@
         if (wasEmpty && currentBatterIdx < 0) {
           currentBatterIdx = 0;
           showBarFromLineup();
+        } else {
+          // Everyone else changes the size of the order, so the bar's
+          // "Nth of M" has to be redrawn or M stays stuck at its old value.
+          updatePlaybackBar();
         }
-        renderLineup();
+        // updatePlaybackBar (via either branch) already redraws the lineup.
         renderAvailable();
+        renderOrderDependent();
       });
       availableList.appendChild(btn);
     });
@@ -1520,6 +1567,7 @@
     renderLineup();
     renderAvailable();
     updatePlaybackBar();
+    renderOrderDependent();
   }
 
   if (clearLineupBtn) {
@@ -1534,6 +1582,7 @@
       renderLineup();
       renderAvailable();
       updatePlaybackBar();
+      renderOrderDependent();
     });
   }
 
@@ -1670,8 +1719,19 @@
       npPlayPauseBtn.disabled = true;
       return;
     }
-    // Label flips between "Now Batting" (playing) and "Up Next" (idle).
-    npCurrentLabel.textContent = playbackPhase ? 'Now Batting' : 'Up Next';
+    // Label flips between "Now Batting" (playing) and "Up Next" (idle), and
+    // carries the spot in the order so the fullscreen view answers "who's up
+    // and where are we in the order?" without going back to the lineup.
+    const npBase = playbackPhase ? 'Now Batting' : 'Up Next';
+    if (currentBatterIdx >= 0 && lineup.length > 0) {
+      npCurrentLabel.textContent =
+        `${npBase} · ${ordinal(currentBatterIdx + 1)} of ${lineup.length}`;
+    } else {
+      // Roster preview: not batting through the order, but still worth saying
+      // where this player hits if they're in it.
+      const pos = battingOrderPos(currentPlayer);
+      npCurrentLabel.textContent = pos ? `Preview · Bats ${ordinal(pos)}` : 'Preview';
+    }
 
     npNumber.textContent = `#${currentPlayer.number}`;
     npName.textContent = `${currentPlayer.firstName} ${currentPlayer.lastName}`;
@@ -1716,7 +1776,7 @@
     row.innerHTML = `
       <span class="np-role-label">${label}</span>
       <span class="np-role-name">
-        <span class="np-role-num">#${player.number}</span>${escapeHtml(player.firstName)} ${escapeHtml(player.lastName)}
+        ${orderChipHtml(player)}<span class="np-role-num">#${player.number}</span>${escapeHtml(player.firstName)} ${escapeHtml(player.lastName)}
       </span>
     `;
     return row;
@@ -2067,11 +2127,14 @@
     }
     if (currentBatterIdx >= 0) {
       // Lineup mode: status reflects whether we're actively playing or ready
+      const spot = `${ordinal(currentBatterIdx + 1)} of ${lineup.length}`;
       playbackStatus.textContent = playbackPhase
-        ? `Now Batting · ${currentBatterIdx + 1} of ${lineup.length}`
-        : `Up Next · ${currentBatterIdx + 1} of ${lineup.length}`;
+        ? `Now Batting · ${spot}`
+        : `Up Next · ${spot}`;
     } else {
-      playbackStatus.textContent = 'Preview';
+      // Roster preview: still say where they hit, if they're in the order.
+      const pos = battingOrderPos(currentPlayer);
+      playbackStatus.textContent = pos ? `Preview · Bats ${ordinal(pos)}` : 'Preview';
     }
     playPauseBtn.disabled = false;
     const canCycle = currentBatterIdx >= 0 && lineup.length > 1;
@@ -2182,10 +2245,15 @@
       return;
     }
     try {
+      // Lock screen / Control Center: the album line carries the spot in the
+      // order, so whoever is running the speaker can see it without unlocking.
+      const pos = currentBatterIdx >= 0 && lineup.length > 0
+        ? currentBatterIdx + 1
+        : battingOrderPos(currentPlayer);
       navigator.mediaSession.metadata = new MediaMetadata({
         title: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
         artist: songLine(currentPlayer) || 'Walk-Up',
-        album: 'Bloordale Bombers',
+        album: pos ? `Bloordale Bombers · Batting ${ordinal(pos)}` : 'Bloordale Bombers',
         artwork: [
           { src: 'icon-192.png?v=2', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png?v=2', sizes: '512x512', type: 'image/png' },
