@@ -83,6 +83,36 @@
       "duration": 192.6,
       "tags": "country-rock, anthem",
       "url": "https://suno.com/song/33dcbc54-001a-47e3-a7c9-b8cc6f9cfa3d"
+    },
+    {
+      "id": "1c3a1993-a9ad-4c8f-8ddf-8a38b0c73f55",
+      "title": "Bombers Don't Mess Around",
+      "caption": "",
+      "file": "audio/suno/bombers-don-t-mess-around.mp3",
+      "art": "audio/suno/art/bombers-don-t-mess-around.jpeg",
+      "duration": 210.0,
+      "tags": "",
+      "url": "https://suno.com/song/1c3a1993-a9ad-4c8f-8ddf-8a38b0c73f55"
+    },
+    {
+      "id": "34f7c0fb-a3d6-48b6-bf1a-5f1a120a9a15",
+      "title": "Out Of The Park",
+      "caption": "",
+      "file": "audio/suno/out-of-the-park.mp3",
+      "art": "audio/suno/art/out-of-the-park.jpeg",
+      "duration": 139.7,
+      "tags": "hip-hop, rock, electronic",
+      "url": "https://suno.com/song/34f7c0fb-a3d6-48b6-bf1a-5f1a120a9a15"
+    },
+    {
+      "id": "3ab71dca-5f9c-4515-be97-b4c64a485f3e",
+      "title": "The Big Bombers",
+      "caption": "",
+      "file": "audio/suno/the-big-bombers.mp3",
+      "art": "audio/suno/art/the-big-bombers.jpeg",
+      "duration": 164.9,
+      "tags": "",
+      "url": "https://suno.com/song/3ab71dca-5f9c-4515-be97-b4c64a485f3e"
     }
   ]
 }
