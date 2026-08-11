@@ -7,9 +7,10 @@ name: Sync Suno playlist
 
 on:
   schedule:
-    # Every 2 hours. A run that finds nothing new costs one API call and makes
-    # no commit, so the only cost of the tighter cadence is CI minutes.
-    - cron: '0 */2 * * *'
+    # Once a day at 3am Toronto time. GitHub crons are UTC and do not follow
+    # DST, so this lands at 3am EDT in summer and 2am EST in winter — close
+    # enough for an overnight job. Add a song and want it now? Dispatch below.
+    - cron: '0 7 * * *'
   workflow_dispatch:          # "Run workflow" to pick up a song immediately
 
 permissions:
