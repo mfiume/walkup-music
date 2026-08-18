@@ -8,7 +8,8 @@ PORT = 8765
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-SPA_ROUTES = {"/lineup", "/roster", "/music", "/settings"}
+# /music is the Sounds tab's old path, kept so an old bookmark still loads.
+SPA_ROUTES = {"/lineup", "/roster", "/sounds", "/music", "/settings"}
 
 
 class NoCacheHandler(SimpleHTTPRequestHandler):

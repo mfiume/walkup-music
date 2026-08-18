@@ -110,6 +110,7 @@
   const npNumber = document.getElementById('np-number');
   const npName = document.getElementById('np-name');
   const npSongName = document.getElementById('np-song-name');
+  const npLastUp = document.getElementById('np-last-up');
   const npUpNext = document.getElementById('np-up-next');
   const npProgressFill = document.getElementById('np-progress-fill');
   const npTimeCurrent = document.getElementById('np-time-current');
@@ -201,7 +202,8 @@
     }
 
     bindSunoPlayer();
-    // Fire-and-forget: the Music tab fills in as soon as the manifest lands.
+    bindSoundboard();
+    // Fire-and-forget: the Sounds tab fills in as soon as the manifest lands.
     loadSunoPlaylist();
 
     bindTabs();
@@ -314,7 +316,7 @@
     if (pushUrl) {
       // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,
       // but a local file:// or root deploy gets clean /lineup paths too.
-      const base = location.pathname.replace(/\/(lineup|roster|music|settings)\/?$/, '');
+      const base = location.pathname.replace(/\/(lineup|roster|sounds|music|settings)\/?$/, '');
       const next = base.replace(/\/$/, '') + '/' + tabName;
       try {
         history.pushState({ tab: tabName }, '', next);
@@ -323,8 +325,12 @@
   }
 
   function tabFromUrl() {
-    const m = location.pathname.match(/\/(lineup|roster|music|settings)\/?$/);
-    return m ? m[1] : 'lineup';
+    const m = location.pathname.match(/\/(lineup|roster|sounds|music|settings)\/?$/);
+    if (!m) return 'lineup';
+    // /music is what the Sounds tab used to be called. Keep the old path
+    // working: it's the one anyone who added the app to their home screen
+    // while sitting on that tab has bookmarked.
+    return m[1] === 'music' ? 'sounds' : m[1];
   }
 
   function bindTabs() {
@@ -379,9 +385,10 @@
     if (playing) stopKeepalive(); else startKeepalive();
   }
 
-  // === Music tab — between-innings playlists ===============================
+  // === Sounds tab — between-innings playlists ==============================
   //
-  // Two sources, each clearly badged:
+  // Two music sources, each clearly badged (the soundboard that sits above
+  // them on the same tab is further down this file):
   //
   //   Spotify — a link out, nothing more. Their iframe embed caps playback at
   //             30-second previews unless the listener is signed in with
@@ -494,17 +501,10 @@
     const track = tracks[i];
     if (!track) return;
 
-    // Between-innings music never talks over a batter or the team intro.
-    if (playbackPhase || isPaused) {
-      stopAll();
-      if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
-      else updatePlaybackBar();
-    }
-    if (teamIntroAudio && !teamIntroAudio.paused) {
-      teamIntroAudio.pause();
-      teamIntroAudio.currentTime = 0;
-      setIntroPlaying(false);
-    }
+    // Between-innings music never talks over a batter, the team intro or a
+    // soundboard stinger.
+    stopSfx();
+    stopBatterAndIntro();
 
     sunoIdx = i;
     if (!audioHasSrc(sunoAudio, track.file)) {
@@ -528,10 +528,16 @@
     syncSunoRows();
   }
 
-  // Stop between-innings music. Called whenever a batter or the team intro
-  // takes the speakers. (Spotify plays in its own app, so there is nothing of
-  // ours to stop there — the phone's own audio focus handles that.)
+  // Stop everything the Sounds tab owns — between-innings music and any
+  // soundboard stinger. Called whenever a batter or the team intro takes the
+  // speakers. (Spotify plays in its own app, so there is nothing of ours to
+  // stop there — the phone's own audio focus handles that.)
   function stopBetweenInnings() {
+    stopSunoPlayback();
+    stopSfx();
+  }
+
+  function stopSunoPlayback() {
     if (!sunoAudio) return;
     if (!sunoAudio.paused) {
       try { sunoAudio.pause(); } catch (_) {}
@@ -539,6 +545,22 @@
     sunoIdx = -1;
     try { sunoAudio.currentTime = 0; } catch (_) {}
     syncSunoRows();
+  }
+
+  // Hand the speakers over from an at-bat / the team intro to whatever the
+  // Sounds tab is about to play. The lineup pointer is left where it was, so
+  // the bar keeps showing the same batter, now as Up Next.
+  function stopBatterAndIntro() {
+    if (playbackPhase || isPaused) {
+      stopAll();
+      if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
+      else updatePlaybackBar();
+    }
+    if (teamIntroAudio && !teamIntroAudio.paused) {
+      teamIntroAudio.pause();
+      teamIntroAudio.currentTime = 0;
+      setIntroPlaying(false);
+    }
   }
 
   // Reflect playback state on the rows: play/pause icon, gold highlight, and
@@ -605,6 +627,169 @@
     sunoAudio.addEventListener('play', syncSunoRows);
     sunoAudio.addEventListener('error', () => {
       console.warn('Suno audio error', sunoAudio.currentSrc);
+    });
+  }
+
+  // === Soundboard — one-shot ballpark stingers ==============================
+  //
+  // The organ and crowd stabs a coach fires by hand: charge, play ball, home
+  // run. Every clip is mirrored into audio/sfx/ from myinstants.com (source
+  // page listed with each entry) for the same reason the Suno tracks are
+  // mirrored — a stinger that has to buffer lands after the moment it was
+  // for, and the field has no signal.
+  //
+  // Names come straight from the source pages, so they are easy to trace back
+  // and easy to change: this list is the only place they appear. Durations are
+  // measured (ffprobe) rather than read at runtime, so a pad can show its
+  // length without the app fetching five files it may never play.
+  const SOUNDBOARD = [
+    { file: 'audio/sfx/play-ball.mp3', name: 'Play Ball', duration: 2.3,
+      source: 'https://www.myinstants.com/en/instant/baseball-play-ball-tune-98649/' },
+    { file: 'audio/sfx/play-game.mp3', name: 'Play Game', duration: 2.1,
+      source: 'https://www.myinstants.com/en/instant/play-game-baseball-64548/' },
+    { file: 'audio/sfx/charge-organ.mp3', name: 'Charge', duration: 15.2,
+      source: 'https://www.myinstants.com/en/instant/charge-baseball-organ-68015/' },
+    { file: 'audio/sfx/charge-organ-2.mp3', name: 'Charge (Alt)', duration: 13.0,
+      source: 'https://www.myinstants.com/en/instant/baseball-charge-organ-13865/' },
+    { file: 'audio/sfx/home-run-horn.mp3', name: 'Home Run', duration: 2.9,
+      source: 'https://www.myinstants.com/en/instant/homerun-baseball-71397/' },
+  ];
+
+  let sfxIdx = -1;                 // index into SOUNDBOARD; -1 = nothing firing
+  let sfxProgressRaf = null;
+
+  const sfxAudio = document.getElementById('sfx-audio');
+  const sfxGridEl = document.getElementById('sfx-grid');
+
+  function renderSoundboard() {
+    if (!sfxGridEl) return;
+    sfxGridEl.innerHTML = '';
+    SOUNDBOARD.forEach((sound, i) => {
+      const pad = document.createElement('button');
+      pad.type = 'button';
+      pad.className = 'sfx-pad';
+      pad.dataset.idx = String(i);
+      // Whole seconds, not m:ss: every stinger is shorter than a pitch, and
+      // "3s" reads faster than "0:03" on a pad the size of a thumb.
+      pad.innerHTML = `
+        <span class="sfx-pad-top">
+          <span class="sfx-icon" aria-hidden="true">
+            <svg class="sfx-play-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            <svg class="sfx-stop-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+          </span>
+          <span class="sfx-dur">${Math.round(sound.duration)}s</span>
+        </span>
+        <span class="sfx-name">${escapeHtml(sound.name)}</span>
+        <span class="sfx-progress" aria-hidden="true"><span class="sfx-progress-fill"></span></span>`;
+      pad.addEventListener('click', () => toggleSfx(i));
+      sfxGridEl.appendChild(pad);
+    });
+    syncSfxPads();
+  }
+
+  // Tapping a pad that is already playing stops it. A stinger is short enough
+  // that re-triggering it mid-play is rarely what you want, and the long organ
+  // charges are exactly the ones you sometimes need to cut off.
+  function toggleSfx(i) {
+    if (i === sfxIdx && sfxAudio && !sfxAudio.paused) {
+      stopSfx();
+      return;
+    }
+    playSfx(i);
+  }
+
+  // A stinger takes the speakers outright: between-innings music, the team
+  // intro and any at-bat in progress all stop. One thing plays at a time
+  // everywhere else in the app, and a horn layered over a walk-up is mud.
+  function playSfx(i) {
+    const sound = SOUNDBOARD[i];
+    if (!sound || !sfxAudio) return;
+
+    stopSunoPlayback();
+    stopBatterAndIntro();
+
+    sfxIdx = i;
+    if (!audioHasSrc(sfxAudio, sound.file)) {
+      sfxAudio.src = sound.file;
+      try { sfxAudio.load(); } catch (_) {}
+    }
+    // Right after load() the element has no timeline yet, and iOS throws
+    // InvalidStateError on a currentTime write in that state — unguarded, the
+    // throw happens before play() and the pad silently does nothing.
+    try { sfxAudio.currentTime = 0; } catch (_) {}
+    sfxAudio.volume = 1;   // no-op on iOS (hardware-controlled), harmless
+    const p = sfxAudio.play();
+    if (p && p.catch) p.catch((e) => console.warn('Soundboard playback failed', e));
+    // Real audio is playing, so the Bluetooth keepalive tone isn't needed.
+    stopKeepalive();
+    syncSfxPads();
+  }
+
+  function stopSfx() {
+    if (!sfxAudio) return;
+    if (!sfxAudio.paused) {
+      try { sfxAudio.pause(); } catch (_) {}
+    }
+    sfxIdx = -1;
+    try { sfxAudio.currentTime = 0; } catch (_) {}
+    syncSfxPads();
+  }
+
+  // Reflect playback state on the pads: play/stop icon, gold fill, and the
+  // progress hairline along the bottom of the pad that's firing.
+  function syncSfxPads() {
+    if (!sfxGridEl) return;
+    const playing = sfxAudio && !sfxAudio.paused && sfxIdx >= 0;
+    sfxGridEl.querySelectorAll('.sfx-pad').forEach((pad) => {
+      const i = Number(pad.dataset.idx);
+      const sound = SOUNDBOARD[i];
+      const isCurrent = i === sfxIdx && playing;
+      pad.classList.toggle('playing', isCurrent);
+      pad.setAttribute('aria-label',
+        `${isCurrent ? 'Stop' : 'Play'} ${sound ? sound.name : 'sound'}`);
+      const playIcon = pad.querySelector('.sfx-play-icon');
+      const stopIcon = pad.querySelector('.sfx-stop-icon');
+      if (playIcon) playIcon.style.display = isCurrent ? 'none' : '';
+      if (stopIcon) stopIcon.style.display = isCurrent ? '' : 'none';
+      if (!isCurrent) {
+        const fill = pad.querySelector('.sfx-progress-fill');
+        if (fill) fill.style.width = '0%';
+      }
+    });
+    if (playing) startSfxProgress(); else stopSfxProgress();
+  }
+
+  function startSfxProgress() {
+    if (sfxProgressRaf) return;
+    const tick = () => {
+      const pad = sfxGridEl && sfxGridEl.querySelector('.sfx-pad.playing');
+      const fill = pad ? pad.querySelector('.sfx-progress-fill') : null;
+      if (fill && sfxAudio.duration) {
+        fill.style.width = `${(sfxAudio.currentTime / sfxAudio.duration) * 100}%`;
+      }
+      sfxProgressRaf = requestAnimationFrame(tick);
+    };
+    sfxProgressRaf = requestAnimationFrame(tick);
+  }
+
+  function stopSfxProgress() {
+    if (sfxProgressRaf) cancelAnimationFrame(sfxProgressRaf);
+    sfxProgressRaf = null;
+  }
+
+  function bindSoundboard() {
+    renderSoundboard();
+    if (!sfxAudio) return;
+    // One-shots: nothing rolls on to the next pad when a stinger ends.
+    sfxAudio.addEventListener('ended', () => {
+      sfxIdx = -1;
+      syncSfxPads();
+      startKeepalive();
+    });
+    sfxAudio.addEventListener('pause', () => { syncSfxPads(); startKeepalive(); });
+    sfxAudio.addEventListener('play', syncSfxPads);
+    sfxAudio.addEventListener('error', () => {
+      console.warn('Soundboard audio error', sfxAudio.currentSrc);
     });
   }
 
@@ -1716,6 +1901,7 @@
       npNumber.textContent = '';
       npName.textContent = 'No player selected';
       npSongName.classList.add('hidden');
+      npLastUp.innerHTML = '';
       npUpNext.innerHTML = '';
       npProgressFill.style.width = '0%';
       npTimeCurrent.textContent = '0:00';
@@ -1755,16 +1941,28 @@
     npPrevBtn.disabled = !canCycle;
     npNextBtn.disabled = !canCycle;
 
-    // Up Next / In The Hole — only meaningful when batting through a lineup
+    // Last Up / On Deck / In The Hole — only meaningful when batting through a
+    // lineup. All three are read off the order rather than off a history of
+    // who actually played, so the panel always agrees with the lineup tab and
+    // comes back right after a reload.
+    npLastUp.innerHTML = '';
     npUpNext.innerHTML = '';
     if (currentBatterIdx >= 0 && lineup.length > 0) {
-      // Order wraps: after the last batter, the top of the order is on deck.
-      const onDeckNum = lineup.length > 1
-        ? lineup[(currentBatterIdx + 1) % lineup.length]
-        : null;
-      const inTheHoleNum = lineup.length > 2
-        ? lineup[(currentBatterIdx + 2) % lineup.length]
-        : null;
+      const n = lineup.length;
+      // The order wraps at both ends: after the last batter the top of the
+      // order is on deck, and the leadoff hitter's "last up" is whoever bats
+      // ninth.
+      const spotAt = (offset) => lineup[(currentBatterIdx + offset + n) % n];
+      const onDeckNum = n > 1 ? spotAt(1) : null;
+      const inTheHoleNum = n > 2 ? spotAt(2) : null;
+      // Who just hit. Dropped when the order is short enough that the spot
+      // behind the current batter is already on screen ahead of them — in a
+      // three-up order, "in the hole" and "last up" are the same player.
+      const lastUpNum = n > 3 ? spotAt(-1) : null;
+      if (lastUpNum != null) {
+        const p = roster.find(x => x.number === lastUpNum);
+        if (p) npLastUp.appendChild(makeUpNextRow('Last Up', p, 'past'));
+      }
       if (onDeckNum != null) {
         const p = roster.find(x => x.number === onDeckNum);
         if (p) npUpNext.appendChild(makeUpNextRow('On Deck', p));
@@ -1776,9 +1974,12 @@
     }
   }
 
-  function makeUpNextRow(label, player) {
+  // `variant` styles a row that isn't part of what's coming up — 'past' dims
+  // the batter who has already hit so they never compete with the name of the
+  // batter at the plate.
+  function makeUpNextRow(label, player, variant) {
     const row = document.createElement('div');
-    row.className = 'np-role-row';
+    row.className = variant ? `np-role-row np-role-row--${variant}` : 'np-role-row';
     row.innerHTML = `
       <span class="np-role-label">${label}</span>
       <span class="np-role-name">

@@ -660,8 +660,21 @@ h3 {
   text-align: center;
 }
 
+/* Who just hit. Sits above the batter block so the panel reads in the order
+   the game happens — last up, now batting, on deck — and is dimmed because it
+   is history: it must never pull the eye off the name at the plate. */
+#np-last-up {
+  margin-top: 14px;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+#np-last-up:empty { display: none; }
+
 #np-batter {
-  margin-top: clamp(18px, 6vh, 60px);
+  margin-top: clamp(14px, 5vh, 48px);
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -737,6 +750,18 @@ h3 {
   color: var(--accent);
   margin-right: 6px;
 }
+
+/* A batter who has already hit: same row, held back a stop. */
+.np-role-row--past {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(31, 61, 44, 0.7);
+}
+.np-role-row--past .np-role-label {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+.np-role-row--past .np-role-name { color: var(--muted); }
+.np-role-row--past .np-role-name .np-role-num { color: rgba(var(--accent-rgb), 0.6); }
 
 #np-progress {
   width: 100%;
@@ -1488,13 +1513,15 @@ body.modal-open { overflow: hidden; }
   margin-top: 4px;
 }
 
-/* === Music view — between-innings playlists =================================
-   Two source cards, each badged with its own logo so there is never a
-   question about which service is playing. Spotify is a link out (its embed
-   only gives 30-second previews, no use for an inning break). Suno's tracks
-   are mirrored into audio/suno/ and played by the app itself — their pages
-   refuse to be framed, and mirroring is what makes them work with no
-   signal. */
+/* === Sounds view ============================================================
+   Three cards. The soundboard comes first: it is the one thing on the tab a
+   coach reaches for mid-play, so it gets the top of the screen and pads big
+   enough to hit without looking. Below it, two music sources, each badged with
+   its own logo so there is never a question about which service is playing.
+   Spotify is a link out (its embed only gives 30-second previews, no use for
+   an inning break). Suno's tracks are mirrored into audio/suno/ and played by
+   the app itself — their pages refuse to be framed, and mirroring is what
+   makes them work with no signal. */
 
 .src-card {
   background: var(--panel);
@@ -1570,6 +1597,111 @@ body.modal-open { overflow: hidden; }
   color: var(--muted);
   padding: 18px 14px;
   text-align: center;
+}
+
+/* --- Soundboard pads ---
+   A grid of thumb-sized one-shots. Two columns on a phone; an odd last pad
+   takes the whole row so the grid never ends ragged. */
+.sfx-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  color: var(--accent);
+}
+
+.sfx-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding: 12px 13px;
+}
+.sfx-pad:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+.sfx-pad {
+  position: relative;
+  overflow: hidden;          /* clips the progress hairline to the radius */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 76px;
+  padding: 10px 11px 12px;
+  text-align: left;
+  color: var(--text);
+  background: linear-gradient(180deg, var(--panel-2), rgba(19, 48, 34, 0.5));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: background 0.15s, border-color 0.15s, transform 0.08s;
+}
+.sfx-pad:hover { border-color: rgba(var(--accent-rgb), 0.4); }
+.sfx-pad:active { transform: scale(0.97); }
+.sfx-pad.playing {
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.2), rgba(var(--accent-rgb), 0.05));
+  border-color: rgba(var(--accent-rgb), 0.65);
+}
+
+.sfx-pad-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.sfx-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sfx-pad:hover .sfx-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
+.sfx-pad.playing .sfx-icon {
+  background: var(--accent);
+  color: var(--green);
+  border-color: var(--accent);
+}
+
+.sfx-dur {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sfx-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+.sfx-pad.playing .sfx-name { color: var(--accent); }
+
+/* Progress hairline along the bottom edge of the pad that's firing. */
+.sfx-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(var(--accent-rgb), 0.18);
+  opacity: 0;
+}
+.sfx-pad.playing .sfx-progress { opacity: 1; }
+.sfx-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.15s linear;
 }
 
 /* --- Suno track list --- */

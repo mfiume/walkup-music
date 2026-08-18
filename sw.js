@@ -14,11 +14,12 @@
 // player once). Deezer preview clips are stored separately in IndexedDB by
 // app.js and already work offline.
 
-// Bumping this name is what evicts a poisoned cache. v8 exists specifically to
-// throw away the 132-byte LFS pointer files that were briefly live and got
-// stored as if they were songs — cache-first would otherwise serve them
-// forever on any device that saw them.
-const CACHE = 'walkup-simple-v8-innings';
+// Bumping this name is what evicts a poisoned cache — v8 existed specifically
+// to throw away the 132-byte LFS pointer files that were briefly live and got
+// stored as if they were songs, which cache-first would otherwise have served
+// forever on any device that saw them. v9 adds the soundboard stingers to the
+// precache list.
+const CACHE = 'walkup-simple-v9-soundboard';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -80,6 +81,12 @@ const AUDIO = [
   'audio/simple/library/we-on-go.mp3',
   // Pre-game team intro
   'audio/simple/team-intro.wav',
+  // Soundboard stingers (see SOUNDBOARD in app.js)
+  'audio/sfx/charge-organ.mp3',
+  'audio/sfx/charge-organ-2.mp3',
+  'audio/sfx/home-run-horn.mp3',
+  'audio/sfx/play-ball.mp3',
+  'audio/sfx/play-game.mp3',
 ];
 
 // Between-innings Suno tracks are read out of suno-playlist.json rather than

@@ -31,7 +31,7 @@
   <meta name="twitter:description" content="Announcements + walk-up music for every batter, every at-bat.">
   <meta name="twitter:image" content="https://mfiume.github.io/walkup-music/og-image.png?v=1">
 
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="styles.css?v=31">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -51,7 +51,7 @@
       <nav class="tab-group" role="tablist" aria-label="Sections">
         <button class="tab active" data-tab="lineup" role="tab" aria-selected="true">Lineup</button>
         <button class="tab" data-tab="roster" role="tab" aria-selected="false">Roster</button>
-        <button class="tab" data-tab="music" role="tab" aria-selected="false">Music</button>
+        <button class="tab" data-tab="sounds" role="tab" aria-selected="false">Sounds</button>
         <button class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
       </nav>
     </div>
@@ -96,7 +96,28 @@
 
     <section id="roster-view" class="view"></section>
 
-    <section id="music-view" class="view">
+    <section id="sounds-view" class="view">
+      <!-- Soundboard: one-shot ballpark stingers a coach fires by hand. The
+           clips are mirrored into audio/sfx/ from myinstants.com (each file's
+           source page is listed beside it in app.js) for the same reason the
+           Suno tracks are mirrored: a stinger that has to buffer is a stinger
+           that lands after the moment it was for. The pads are rendered by
+           app.js from the SOUNDBOARD list. -->
+      <section class="src-card" id="soundboard-card">
+        <header class="src-head">
+          <span class="src-logo sfx-logo" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" role="img"><title>Soundboard</title>
+              <path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>
+            </svg>
+          </span>
+          <div class="src-titles">
+            <div class="src-name">Soundboard</div>
+            <div class="src-sub">Tap to fire, tap again to stop</div>
+          </div>
+        </header>
+        <div id="sfx-grid" class="sfx-grid"></div>
+      </section>
+
       <!-- Spotify: link-out only. Their embed caps playback at 30-second
            previews unless the listener is signed in with Premium, which is no
            use for between innings, so there's no point spending a
@@ -213,6 +234,8 @@
       <div style="width: 44px"></div><!-- spacer for centering -->
     </div>
 
+    <div id="np-last-up"></div>
+
     <div id="np-batter">
       <div id="np-number"></div>
       <div id="np-name"></div>
@@ -249,6 +272,9 @@
   <audio id="walkup-audio" preload="auto"></audio>
   <audio id="team-intro-audio" preload="auto" src="audio/simple/team-intro.wav"></audio>
   <audio id="suno-audio" preload="none"></audio>
+  <!-- Stingers are short and must fire the instant a pad is tapped, so unlike
+       the Suno tracks they are preloaded rather than fetched on demand. -->
+  <audio id="sfx-audio" preload="auto"></audio>
 
   <!-- Deezer search modal -->
   <div id="deezer-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="deezer-modal-title">
@@ -275,6 +301,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=46"></script>
+  <script src="app.js?v=47"></script>
 </body>
 </html>
