@@ -233,6 +233,7 @@
     bindMediaSession();
     bindDeezerModal();
     bindAudioUnlock();
+    updateDuckNote();
 
     // Restore the lineup cursor so a hard refresh returns to whoever was Up
     // Next / batting, not the leadoff hitter. Falls back to 0 if the saved
@@ -1964,6 +1965,14 @@
     }
   }
 
+  // The mode descriptions promise music under the announcement. When the device
+  // can't deliver that, say so here rather than letting the app quietly do
+  // something other than what the screen claims.
+  function updateDuckNote() {
+    const note = document.getElementById('duck-note');
+    if (note) note.hidden = duckingAvailable !== false;
+  }
+
   // === Settings ===
   function bindSettings() {
     const opts = document.querySelectorAll('.settings-opt');
@@ -2559,6 +2568,7 @@
     // on iOS this is the only moment the browser will let us take control of the
     // level (see the walk-up level section).
     resumeAudioCtx();
+    startGraphTest();
     ensureWalkupRouting();
     setWalkupLevel(0);             // every music entry fades in (see startWalkupAudio)
     seekWalkupToStart();
@@ -2572,7 +2582,7 @@
       announcementAudio.volume = 1.0;
       announcementAudio.currentTime = 0;
       announcementAudio.play().then(() => {
-        if (playbackMode === 'overlap') {
+        if (playbackMode === 'overlap' && overlapAllowed()) {
           // Music plays the entire time, ducked under the announcement.
           // Soft fade-in from 0 to ducked so it doesn't cut in.
           startWalkupAudio(duckedVol());
@@ -2604,7 +2614,7 @@
         announcementOverlapTimer = setTimeout(tryArm, 120);
         return;
       }
-      const startMusicAt = Math.max(0, dur - OVERLAP_S);
+      const startMusicAt = Math.max(0, dur - effectiveOverlapS());
       const fireIn = Math.max(0, (startMusicAt - announcementAudio.currentTime) * 1000);
       announcementOverlapTimer = setTimeout(beginMusicOverlap, fireIn);
     };
@@ -2614,6 +2624,9 @@
   function beginMusicOverlap() {
     if (playbackPhase !== 'announcement') return;
     if (!walkupAudio.src) return;
+    // Nothing to overlap: with no level control the music waits, and the
+    // hand-off belongs to onAnnouncementEnded.
+    if (effectiveOverlapS() <= 0) return;
     // Music starts ducked under the tail of the announcement, fading in
     // from 0 so the entry isn't a hard cut. Announcement continues at full
     // volume.
@@ -2761,14 +2774,14 @@
     const ann = announcementTotal();
     const walkup = effectiveWalkupTotal();
     if (ann <= 0) return walkup;
-    if (playbackMode === 'overlap') return Math.max(ann, walkup);
-    return ann + walkup - OVERLAP_S;
+    if (playbackMode === 'overlap' && overlapAllowed()) return Math.max(ann, walkup);
+    return ann + walkup - effectiveOverlapS();
   }
 
   // Where we are in the combined at-bat timeline. Continuous across the
   // announcement → music transition.
   function atBatElapsed() {
-    if (playbackMode === 'overlap') {
+    if (playbackMode === 'overlap' && overlapAllowed()) {
       // Both audios share the same t=0, so the master clock is whichever
       // is currently audible. Music is the steadier clock since it plays
       // through the entire at-bat.
@@ -2783,7 +2796,7 @@
     if (playbackPhase === 'walkup') {
       const ann = announcementTotal();
       return ann > 0
-        ? ann + walkupClipTime() - OVERLAP_S
+        ? ann + walkupClipTime() - effectiveOverlapS()
         : walkupClipTime();
     }
     return 0;
@@ -2862,6 +2875,7 @@
     // Resuming is a tap, which is the only moment iOS will let the audio graph
     // come back up if something interrupted it.
     resumeAudioCtx();
+    startGraphTest();
     if (playbackPhase === 'announcement') {
       announcementAudio.play().catch(() => {});
       scheduleAnnouncementOverlap();
@@ -2892,53 +2906,152 @@
   }
 
   // === Walk-up level =======================================================
-  // iOS reserves volume for the hardware buttons: assigning to
-  // HTMLMediaElement.volume there does nothing and the property keeps reading
-  // back 1. Every duck and every fade this app performs was therefore silent on
-  // the phone it is actually used on — a song played at full level straight over
-  // the spoken announcement, then stopped dead at the cap instead of fading out.
+  // iOS ignores HTMLMediaElement.volume: the property stores whatever you
+  // assign and reads it back, so it looks like it worked, but the output level
+  // never changes. Every duck and every fade this app performs was therefore
+  // silent on the phone it is used on — the song played at full level straight
+  // over the spoken announcement, then stopped dead at the cap instead of
+  // fading out. The first attempt at this checked whether the property
+  // round-tripped, which iOS passes, so it kept using the broken path.
   //
-  // Where the element's own volume works, keep using it: that path is the one
-  // least likely to break. Where it doesn't, route the walk-up element through a
-  // Web Audio gain node, which iOS does honour.
+  // So: don't ask whether the volume property works, ask whether the mechanism
+  // that replaces it does. testMediaGraph() below plays a 120 ms tone through
+  // exactly the arrangement the walk-up will use — media element into a gain
+  // node — with the gain at zero and an analyser ahead of it, and watches for
+  // the waveform. Silent to the room, and it answers the only question that
+  // matters: can this device's audio graph carry a media element?
+  //
+  //   passes -> the walk-up is routed through a gain node and levels work
+  //   fails  -> nothing is routed and music never plays under the announcement
+  //             at all, because a bed we cannot lower is a bed that buries the
+  //             kid's name
   //
   // Only the walk-up element is ever routed. A routed element reaches the
   // speakers only through the graph, and iOS suspends an AudioContext while the
   // page is backgrounded, so between-innings music, the team intro and the
   // soundboard deliberately stay on the plain path — those are the ones that
   // play unattended, and they must not depend on the context being awake.
-  const canSetElementVolume = (() => {
-    try {
-      const probe = new Audio();
-      probe.volume = 0.5;
-      return Math.abs(probe.volume - 0.5) < 0.01;
-    } catch (_) { return false; }
-  })();
+  let duckingAvailable = null;   // null until the graph has been tested
+  let graphTestPeak = 0;         // what the test saw, for walkupDebug()
+  let graphTestRuns = 0;
+  let graphTesting = false;
 
   let walkupLevel = 1;        // the level we last asked for, 0-1
   let walkupGain = null;      // gain node, once routed
   let walkupSource = null;
+  let walkupAnalyser = null;  // after the gain: what is actually going out
 
-  // Route the walk-up element through a gain node. Only ever called from inside
-  // the tap that starts playback, and only once the context is actually running:
-  // routing an element into a suspended context mutes it outright, which would
-  // be far worse than the loudness it is here to fix.
+  // A 120 ms tone as a data: URI. Only ever used as a signal for the graph
+  // test — about a kilobyte, and never audible.
+  function toneDataUri() {
+    const rate = 8000;
+    const len = Math.floor(rate * 0.12);
+    const bytes = new Uint8Array(44 + len);
+    const str = (off, s) => { for (let i = 0; i < s.length; i++) bytes[off + i] = s.charCodeAt(i); };
+    const u32 = (off, v) => {
+      bytes[off] = v & 255; bytes[off + 1] = (v >> 8) & 255;
+      bytes[off + 2] = (v >> 16) & 255; bytes[off + 3] = (v >> 24) & 255;
+    };
+    const u16 = (off, v) => { bytes[off] = v & 255; bytes[off + 1] = (v >> 8) & 255; };
+    str(0, 'RIFF'); u32(4, 36 + len); str(8, 'WAVEfmt ');
+    u32(16, 16); u16(20, 1); u16(22, 1); u32(24, rate); u32(28, rate);
+    u16(32, 1); u16(34, 8); str(36, 'data'); u32(40, len);
+    for (let i = 0; i < len; i++) {
+      bytes[44 + i] = 128 + Math.round(90 * Math.sin(2 * Math.PI * 440 * i / rate));
+    }
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+
+  // Can a media element reach the speakers through a gain node on this device?
+  // Called from inside a user gesture, because that is when iOS will let an
+  // element play at all. Retried a couple of times before giving up, since an
+  // early attempt can fail for reasons that have nothing to do with support.
+  function startGraphTest() {
+    if (graphTesting || duckingAvailable === true || graphTestRuns >= 3) return;
+    const ctx = ensureAudioCtx();
+    if (!ctx || ctx.state !== 'running' || !ctx.createMediaElementSource) return;
+
+    graphTesting = true;
+    graphTestRuns += 1;
+
+    let el = null, source = null, analyser = null, gain = null;
+    const finish = (ok) => {
+      graphTesting = false;
+      duckingAvailable = ok;
+      try { if (el) { el.pause(); el.src = ''; } } catch (_) {}
+      [source, analyser, gain].forEach((n) => { try { if (n) n.disconnect(); } catch (_) {} });
+      if (ok) ensureWalkupRouting();
+      else console.warn('This device cannot carry a media element through the audio graph; ' +
+                        'music will wait for the announcement instead of playing under it');
+      updateDuckNote();
+    };
+
+    try {
+      el = new Audio(toneDataUri());
+      el.loop = true;
+      source = ctx.createMediaElementSource(el);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      gain = ctx.createGain();
+      gain.gain.value = 0;                     // silent to the room
+      source.connect(analyser).connect(gain).connect(ctx.destination);
+    } catch (err) {
+      console.warn('Audio graph test could not be set up', err);
+      finish(false);
+      return;
+    }
+
+    const buf = new Uint8Array(analyser.fftSize);
+    let tries = 0;
+    const sample = () => {
+      analyser.getByteTimeDomainData(buf);
+      let peak = 0;
+      for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
+      graphTestPeak = Math.round(peak * 1000) / 1000;
+      if (peak > 0.02) return finish(true);
+      if (++tries > 12) return finish(false);   // ~650 ms of looking
+      setTimeout(sample, 50);
+    };
+    const played = el.play();
+    if (played && played.catch) played.catch(() => finish(false));
+    setTimeout(sample, 60);
+  }
+
+  // Route the walk-up element through a gain node. Only once the graph test has
+  // passed and the context is running: routing into a graph that cannot carry
+  // the element, or into a suspended context, would mute the walk-up outright —
+  // far worse than the loudness this is here to fix.
   function ensureWalkupRouting() {
-    if (canSetElementVolume || walkupGain) return walkupGain;
+    if (walkupGain || duckingAvailable !== true) return walkupGain;
     const ctx = ensureAudioCtx();
     if (!ctx || ctx.state !== 'running') return null;
     try {
       walkupSource = ctx.createMediaElementSource(walkupAudio);
       walkupGain = ctx.createGain();
       walkupGain.gain.value = walkupLevel;
-      walkupSource.connect(walkupGain).connect(ctx.destination);
+      walkupAnalyser = ctx.createAnalyser();
+      walkupAnalyser.fftSize = 256;
+      walkupSource.connect(walkupGain).connect(walkupAnalyser).connect(ctx.destination);
     } catch (err) {
-      // Leaves the app on the plain path: no quieter than it was before.
       console.warn('Walk-up gain routing unavailable', err);
       walkupGain = null;
       walkupSource = null;
+      walkupAnalyser = null;
     }
     return walkupGain;
+  }
+
+  // Music only plays under the announcement when its level can be controlled.
+  // Where it can't, the song waits: a bed at full volume doesn't sound like a
+  // stadium, it sounds like nobody can hear the kid's name.
+  function overlapAllowed() {
+    return duckingAvailable === true && !!walkupGain;
+  }
+
+  function effectiveOverlapS() {
+    return overlapAllowed() ? OVERLAP_S : 0;
   }
 
   function setWalkupLevel(v) {
@@ -2959,18 +3072,33 @@
   // is exactly how the iOS volume problem went unnoticed for a season. This is
   // the window into it, for a Safari console attached to the phone:
   //
-  //   walkupDebug()  ->  { level, routed, ctxState, canSetElementVolume, gain }
+  //   walkupDebug()  ->  { level, routed, ducking, outputPeak, ... }
   //
   window.walkupDebug = () => ({
     level: Number(walkupLevel.toFixed(3)),
     routed: !!walkupGain,
     gainNodeValue: walkupGain ? Number(walkupGain.gain.value.toFixed(3)) : null,
+    ducking: duckingAvailable,          // null = the graph hasn't been tested yet
+    graphTestPeak,                      // what the silent test tone measured
+    graphTestRuns,
+    outputPeak: walkupOutputPeak(),     // what is leaving the gain node right now
+    overlap: overlapAllowed(),
     ctxState: audioCtx ? audioCtx.state : 'none',
-    canSetElementVolume,
     elementVolume: walkupAudio.volume,
     songGain: currentPlayer ? songGain(currentPlayer) : null,
     song: currentPlayer ? songLine(currentPlayer) : null,
   });
+
+  // Peak of what the walk-up is actually putting out, or null when it isn't
+  // routed and there is nothing to look at.
+  function walkupOutputPeak() {
+    if (!walkupAnalyser) return null;
+    const buf = new Uint8Array(walkupAnalyser.fftSize);
+    walkupAnalyser.getByteTimeDomainData(buf);
+    let peak = 0;
+    for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
+    return Math.round(peak * 1000) / 1000;
+  }
 
   // === Fade helper ===
   // Only ever used on the walk-up, and it writes through setWalkupLevel rather
@@ -3223,7 +3351,13 @@
   }
 
   function bindAudioUnlock() {
-    const unlock = () => resumeAudioCtx();
+    const unlock = () => {
+      resumeAudioCtx();
+      // From inside the gesture, because that is when iOS will let the test's
+      // element play. On the very first tap the context is usually still coming
+      // up, so this lands on the next one — well before the first batter.
+      startGraphTest();
+    };
     // Capture phase and passive: this must not interfere with any handler, and
     // it stays attached because the context can be suspended again at any time.
     ['pointerdown', 'touchend', 'keydown'].forEach((evt) => {
