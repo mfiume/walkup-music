@@ -18,8 +18,9 @@
 // to throw away the 132-byte LFS pointer files that were briefly live and got
 // stored as if they were songs, which cache-first would otherwise have served
 // forever on any device that saw them. v9 added the soundboard stingers to the
-// precache list; v10 renamed one of them.
-const CACHE = 'walkup-simple-v10-soundboard';
+// precache list; v11 is the rename + cull of those clips, and evicts the files
+// that are no longer shipped.
+const CACHE = 'walkup-simple-v11-soundboard';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -82,11 +83,9 @@ const AUDIO = [
   // Pre-game team intro
   'audio/simple/team-intro.wav',
   // Soundboard stingers (see SOUNDBOARD in app.js)
-  'audio/sfx/charge-organ.mp3',
-  'audio/sfx/charge-organ-2.mp3',
-  'audio/sfx/home-run.mp3',
-  'audio/sfx/play-ball.mp3',
-  'audio/sfx/play-game.mp3',
+  'audio/sfx/charge.mp3',
+  'audio/sfx/charge-climb.mp3',
+  'audio/sfx/lets-go-bombers.mp3',
 ];
 
 // Between-innings Suno tracks are read out of suno-playlist.json rather than

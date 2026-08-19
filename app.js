@@ -626,34 +626,28 @@
 
   // === Soundboard — one-shot ballpark stingers ==============================
   //
-  // The organ and crowd stabs a coach fires by hand: charge, play ball, home
-  // run. Every clip is mirrored into audio/sfx/ from myinstants.com (source
-  // page listed with each entry) for the same reason the Suno tracks are
-  // mirrored — a stinger that has to buffer lands after the moment it was
+  // The organ stabs a coach fires by hand: the charge call, and the two long
+  // rally riffs. Every clip is mirrored into audio/sfx/ from myinstants.com
+  // (source page listed with each entry) for the same reason the Suno tracks
+  // are mirrored — a stinger that has to buffer lands after the moment it was
   // for, and the field has no signal.
   //
   // Ordered shortest first, because length is what separates these in use: the
-  // two-second calls are for punctuating a play, the long ones for filling a
-  // gap. Durations are measured (ffprobe) rather than read at runtime, so a
-  // row can show its length without the app fetching five files it may never
-  // play.
+  // three-second call punctuates a play, the long ones fill a gap. Durations
+  // are measured (ffprobe) rather than read at runtime, so a row can show its
+  // length without the app fetching files it may never play.
   //
-  // Names: the three short clips are all the same bugle charge figure
-  // (sol-do-mi-sol) — the first two in C, the third a fourth higher in E — so
-  // they sound alike however they are labelled, and they keep the names from
-  // their source pages. The two long ones are genuinely different and are
-  // named for what they do: one climbs in a single unbroken line, the other
-  // plays its phrase four times, each pass a little higher.
+  // Names are what the clips actually are, which is not what the source pages
+  // called them. Five were downloaded; two were the same bugle charge call as
+  // the first entry here, a whole tone lower, so they were dropped rather than
+  // shipped as three rows that sound the same. Filenames match the names, so
+  // the directory reads the way the tab does.
   const SOUNDBOARD = [
-    { file: 'audio/sfx/play-game.mp3', name: 'Play Game', duration: 2.1,
-      source: 'https://www.myinstants.com/en/instant/play-game-baseball-64548/' },
-    { file: 'audio/sfx/play-ball.mp3', name: 'Play Ball', duration: 2.3,
-      source: 'https://www.myinstants.com/en/instant/baseball-play-ball-tune-98649/' },
-    { file: 'audio/sfx/home-run.mp3', name: 'Home Run', duration: 2.9,
+    { file: 'audio/sfx/charge.mp3', name: 'Charge', duration: 2.9,
       source: 'https://www.myinstants.com/en/instant/homerun-baseball-71397/' },
-    { file: 'audio/sfx/charge-organ-2.mp3', name: 'Charge (Climb)', duration: 13.0,
+    { file: 'audio/sfx/charge-climb.mp3', name: 'Charge (Climb)', duration: 13.0,
       source: 'https://www.myinstants.com/en/instant/baseball-charge-organ-13865/' },
-    { file: 'audio/sfx/charge-organ.mp3', name: 'Charge (Four Rounds)', duration: 15.2,
+    { file: 'audio/sfx/lets-go-bombers.mp3', name: "Let's Go Bombers", duration: 15.2,
       source: 'https://www.myinstants.com/en/instant/charge-baseball-organ-68015/' },
   ];
 
