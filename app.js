@@ -632,21 +632,29 @@
   // mirrored — a stinger that has to buffer lands after the moment it was
   // for, and the field has no signal.
   //
-  // Names come straight from the source pages, so they are easy to trace back
-  // and easy to change: this list is the only place they appear. Durations are
-  // measured (ffprobe) rather than read at runtime, so a pad can show its
-  // length without the app fetching five files it may never play.
+  // Ordered shortest first, because length is what separates these in use: the
+  // two-second calls are for punctuating a play, the long ones for filling a
+  // gap. Durations are measured (ffprobe) rather than read at runtime, so a
+  // row can show its length without the app fetching five files it may never
+  // play.
+  //
+  // Names: the three short clips are all the same bugle charge figure
+  // (sol-do-mi-sol) — the first two in C, the third a fourth higher in E — so
+  // they sound alike however they are labelled, and they keep the names from
+  // their source pages. The two long ones are genuinely different and are
+  // named for what they do: one climbs in a single unbroken line, the other
+  // plays its phrase four times, each pass a little higher.
   const SOUNDBOARD = [
-    { file: 'audio/sfx/play-ball.mp3', name: 'Play Ball', duration: 2.3,
-      source: 'https://www.myinstants.com/en/instant/baseball-play-ball-tune-98649/' },
     { file: 'audio/sfx/play-game.mp3', name: 'Play Game', duration: 2.1,
       source: 'https://www.myinstants.com/en/instant/play-game-baseball-64548/' },
-    { file: 'audio/sfx/charge-organ.mp3', name: 'Charge', duration: 15.2,
-      source: 'https://www.myinstants.com/en/instant/charge-baseball-organ-68015/' },
-    { file: 'audio/sfx/charge-organ-2.mp3', name: 'Charge (Alt)', duration: 13.0,
-      source: 'https://www.myinstants.com/en/instant/baseball-charge-organ-13865/' },
-    { file: 'audio/sfx/home-run-horn.mp3', name: 'Home Run', duration: 2.9,
+    { file: 'audio/sfx/play-ball.mp3', name: 'Play Ball', duration: 2.3,
+      source: 'https://www.myinstants.com/en/instant/baseball-play-ball-tune-98649/' },
+    { file: 'audio/sfx/home-run.mp3', name: 'Home Run', duration: 2.9,
       source: 'https://www.myinstants.com/en/instant/homerun-baseball-71397/' },
+    { file: 'audio/sfx/charge-organ-2.mp3', name: 'Charge (Climb)', duration: 13.0,
+      source: 'https://www.myinstants.com/en/instant/baseball-charge-organ-13865/' },
+    { file: 'audio/sfx/charge-organ.mp3', name: 'Charge (Four Rounds)', duration: 15.2,
+      source: 'https://www.myinstants.com/en/instant/charge-baseball-organ-68015/' },
   ];
 
   let sfxIdx = -1;                 // index into SOUNDBOARD; -1 = nothing firing

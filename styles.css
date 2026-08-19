@@ -1514,14 +1514,14 @@ body.modal-open { overflow: hidden; }
 }
 
 /* === Sounds view ============================================================
-   Three cards, each of which folds shut so the one being used can sit at the
-   top of the screen. The soundboard comes first: it is the one thing on the
-   tab a coach reaches for mid-play. Below it, two music sources, each badged
-   with its own logo so there is never a question about which service is
-   playing. Spotify is a link out (its embed only gives 30-second previews, no
-   use for an inning break). Suno's tracks are mirrored into audio/suno/ and
-   played by the app itself — their pages refuse to be framed, and mirroring is
-   what makes them work with no signal. */
+   Three cards, ordered by how much they get used and each folding shut so the
+   one in play can sit at the top of the screen. The soundboard comes first: it
+   is the one thing on the tab a coach reaches for mid-play. Then Suno, whose
+   tracks are mirrored into audio/suno/ and played by the app itself — their
+   pages refuse to be framed, and mirroring is what makes them work with no
+   signal. Spotify is last because it is only a link out: its embed gives
+   30-second previews, no use for an inning break, so there is nothing to
+   collapse and nothing to play in place. */
 
 .src-card {
   background: var(--panel);

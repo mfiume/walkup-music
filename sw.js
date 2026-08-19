@@ -17,9 +17,9 @@
 // Bumping this name is what evicts a poisoned cache — v8 existed specifically
 // to throw away the 132-byte LFS pointer files that were briefly live and got
 // stored as if they were songs, which cache-first would otherwise have served
-// forever on any device that saw them. v9 adds the soundboard stingers to the
-// precache list.
-const CACHE = 'walkup-simple-v9-soundboard';
+// forever on any device that saw them. v9 added the soundboard stingers to the
+// precache list; v10 renamed one of them.
+const CACHE = 'walkup-simple-v10-soundboard';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -84,7 +84,7 @@ const AUDIO = [
   // Soundboard stingers (see SOUNDBOARD in app.js)
   'audio/sfx/charge-organ.mp3',
   'audio/sfx/charge-organ-2.mp3',
-  'audio/sfx/home-run-horn.mp3',
+  'audio/sfx/home-run.mp3',
   'audio/sfx/play-ball.mp3',
   'audio/sfx/play-game.mp3',
 ];
