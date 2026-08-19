@@ -974,82 +974,6 @@ h3 {
   line-height: 1.5;
 }
 
-/* === Pre-game team intro button (Lineup view, top) ===
-   Visual: matches an inactive lineup row (panel bg, panel border, 12px
-   radius). The right-side play button mirrors .lineup-play. When playing,
-   the row picks up the same gold-tinted active treatment as a current
-   batter row, so the state read is consistent across the page. */
-.pregame-btn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  margin-top: 4px;
-  margin-bottom: 6px;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.18s ease;
-}
-.pregame-btn:hover { background: var(--panel-2); }
-.pregame-btn:active { transform: scale(0.99); }
-.pregame-btn.playing {
-  border-color: rgba(var(--accent-rgb), 0.6);
-  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(var(--accent-rgb), 0.04));
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.2) inset;
-}
-
-.pregame-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  color: var(--text);
-  flex-shrink: 0;
-  order: 2;                  /* sits at the right, like .lineup-play */
-  margin-left: auto;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.pregame-btn:hover .pregame-icon {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: rgba(var(--accent-rgb), 0.5);
-}
-.pregame-btn.playing .pregame-icon {
-  background: var(--accent);
-  color: var(--green);
-  border-color: var(--accent);
-}
-
-.pregame-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.pregame-title {
-  font-weight: 600;
-  font-size: 0.98rem;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pregame-sub {
-  font-size: 0.82rem;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* === Settings → Songs (per-player walk-up overrides) === */
 #song-options-list {
   display: flex;
@@ -1195,9 +1119,91 @@ h3 {
   flex-shrink: 0;
 }
 /* The player's own songs: same row as a library entry, held slightly forward
-   so the group reads as theirs rather than as more of the list below. */
+   so the group reads as theirs rather than as more of the list below. A Deezer
+   song stacks its start control underneath, inside the same card — the start
+   point belongs to that song, not to the list. */
 .song-opt.song-pick {
   background: rgba(255, 255, 255, 0.02);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+.song-pick-main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;          /* lets the title column be the thing that truncates */
+}
+/* Cover art in a pick row is an identifier, not a feature: keep it small enough
+   that the song's name still has room next to the badges. */
+.song-pick .song-opt-art {
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+}
+.song-pick .song-opt-title { min-width: 3.5em; }
+/* The tag and the circle occupy the same slot: a row either offers itself to be
+   chosen, or says it is the one playing. Both at once cost the song's name the
+   room it needs on a phone. */
+
+/* Indented to the title above it, past the play button, so the two read as one
+   block rather than two settings. */
+.song-start {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px 1px 42px;
+}
+.song-start-label,
+.song-start-value {
+  font-size: 0.72rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.song-start-value {
+  min-width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.song-start.on-active .song-start-value { color: var(--accent); }
+
+.song-start-range {
+  flex: 1;
+  min-width: 0;
+  height: 24px;                /* a thumb-sized target, not a hairline */
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.song-start-range:focus { outline: none; }
+.song-start-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.song-start-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 17px;
+  height: 17px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
+}
+.song-start-range::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.song-start-range::-moz-range-thumb {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
 }
 .song-opt.song-pick.active {
   background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.05));

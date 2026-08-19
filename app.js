@@ -15,6 +15,12 @@
   // Deezer previews are 30s; umpires care about ten-second walk-ups so we
   // hard-cap any Deezer-sourced clip to this many seconds.
   const DEEZER_CLIP_DURATION_S = 10;
+  // Deezer previews are 30 seconds and we play ten of them, so a track can be
+  // set to start anywhere in the first twenty — the hook is rarely at the top
+  // of the preview. Clamped against the real duration at play time in case a
+  // preview ever comes back shorter than the nominal thirty seconds.
+  const DEEZER_PREVIEW_S = 30;
+  const MAX_CLIP_START_S = DEEZER_PREVIEW_S - DEEZER_CLIP_DURATION_S;
   const FADE_IN_S = 0.3;            // soft fade-in when music starts (never cuts)
   const FADE_OUT_S = 1.5;           // soft fade-out at the end of any clip
   const OVERLAP_S = 1.2;            // start music this many seconds before announcement ends
@@ -138,10 +144,6 @@
   const npPauseIcon = document.getElementById('np-pause-icon');
 
   // Pre-game team intro
-  const teamIntroBtn = document.getElementById('team-intro-btn');
-  const teamIntroAudio = document.getElementById('team-intro-audio');
-  const pregamePlayIcon = document.getElementById('pregame-play-icon');
-  const pregamePauseIcon = document.getElementById('pregame-pause-icon');
 
   // === Init ===
   // Register the service worker that makes the app work offline. It uses a
@@ -228,7 +230,6 @@
     bindNowPlaying();
     bindAudioEvents();
     bindSettings();
-    bindTeamIntro();
     bindMediaSession();
     bindDeezerModal();
     bindAudioUnlock();
@@ -323,13 +324,7 @@
     if (scrollEl) scrollEl.scrollTop = 0;
 
     // Stop any in-flight song preview when leaving the Settings tab.
-    if (tabName !== 'settings') {
-      try { previewAudio.pause(); previewAudio.currentTime = 0; } catch (_) {}
-      document.querySelectorAll('.song-opt-preview.playing').forEach(b => {
-        b.classList.remove('playing');
-        b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
-      });
-    }
+    if (tabName !== 'settings') stopPreview();
 
     if (pushUrl) {
       // Anchor URL to the GitHub Pages base path so /walkup-music/lineup works,
@@ -363,44 +358,6 @@
     window.addEventListener('popstate', () => {
       activateTab(tabFromUrl(), { pushUrl: false });
     });
-  }
-
-  // === Pre-game team intro ===
-  function bindTeamIntro() {
-    if (!teamIntroBtn || !teamIntroAudio) return;
-    teamIntroBtn.addEventListener('click', () => {
-      if (!teamIntroAudio.paused) {
-        teamIntroAudio.pause();
-        teamIntroAudio.currentTime = 0;
-        setIntroPlaying(false);
-        return;
-      }
-      stopBetweenInnings();
-      // If a batter is queued or playing, stop them first; the intro is a
-      // one-shot that owns the speakers for its duration.
-      if (playbackPhase || isPaused) {
-        stopAll();
-        if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
-        else updatePlaybackBar();
-      }
-      teamIntroAudio.currentTime = 0;
-      const p = teamIntroAudio.play();
-      if (p && p.catch) p.catch(() => {});
-      setIntroPlaying(true);
-    });
-    teamIntroAudio.addEventListener('ended', () => setIntroPlaying(false));
-    teamIntroAudio.addEventListener('pause', () => {
-      if (teamIntroAudio.currentTime === 0) setIntroPlaying(false);
-    });
-  }
-
-  function setIntroPlaying(playing) {
-    if (!teamIntroBtn) return;
-    teamIntroBtn.classList.toggle('playing', playing);
-    if (pregamePlayIcon) pregamePlayIcon.style.display = playing ? 'none' : '';
-    if (pregamePauseIcon) pregamePauseIcon.style.display = playing ? '' : 'none';
-    teamIntroBtn.setAttribute('aria-label', playing ? 'Stop team intro' : 'Play team intro');
-    if (playing) stopKeepalive(); else startKeepalive();
   }
 
   // === Sounds tab — between-innings playlists ==============================
@@ -514,7 +471,7 @@
     // Between-innings music never talks over a batter, the team intro or a
     // soundboard stinger.
     stopSfx();
-    stopBatterAndIntro();
+    stopBatterPlayback();
 
     sunoIdx = i;
     if (!audioHasSrc(sunoAudio, track.file)) {
@@ -538,9 +495,8 @@
     syncSunoRows();
   }
 
-  // Stop everything the Sounds tab owns — between-innings music and any
-  // soundboard stinger. Called whenever a batter or the team intro takes the
-  // speakers. (Spotify plays in its own app, so there is nothing of ours to
+  // Stop everything the Sounds tab owns — between-innings music and anything
+  // on the soundboard. Called whenever a batter takes the speakers. (Spotify plays in its own app, so there is nothing of ours to
   // stop there — the phone's own audio focus handles that.)
   function stopBetweenInnings() {
     stopSunoPlayback();
@@ -557,20 +513,14 @@
     syncSunoRows();
   }
 
-  // Hand the speakers over from an at-bat / the team intro to whatever the
-  // Sounds tab is about to play. The lineup pointer is left where it was, so
-  // the bar keeps showing the same batter, now as Up Next.
-  function stopBatterAndIntro() {
-    if (playbackPhase || isPaused) {
-      stopAll();
-      if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
-      else updatePlaybackBar();
-    }
-    if (teamIntroAudio && !teamIntroAudio.paused) {
-      teamIntroAudio.pause();
-      teamIntroAudio.currentTime = 0;
-      setIntroPlaying(false);
-    }
+  // Hand the speakers over from an at-bat to whatever the Sounds tab is about
+  // to play. The lineup pointer is left where it was, so the bar keeps showing
+  // the same batter, now as Up Next.
+  function stopBatterPlayback() {
+    if (!playbackPhase && !isPaused) return;
+    stopAll();
+    if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
+    else updatePlaybackBar();
   }
 
   // Reflect playback state on the rows: play/pause icon, gold highlight, and
@@ -643,23 +593,28 @@
 
   // === Soundboard — one-shot ballpark stingers ==============================
   //
-  // The organ stabs a coach fires by hand: the charge call, and the two long
-  // rally riffs. Every clip is mirrored into audio/sfx/ from myinstants.com
-  // (source page listed with each entry) for the same reason the Suno tracks
-  // are mirrored — a stinger that has to buffer lands after the moment it was
-  // for, and the field has no signal.
+  // Everything a coach fires by hand: the team intro that opens the game, then
+  // the organ stabs. The stingers are mirrored into audio/sfx/ from
+  // myinstants.com (source page listed with each entry) for the same reason the
+  // Suno tracks are mirrored — one that has to buffer lands after the moment it
+  // was for, and the field has no signal. The intro is our own recording.
   //
   // Ordered shortest first, because length is what separates these in use: the
   // three-second call punctuates a play, the long ones fill a gap. Durations
   // are measured (ffprobe) rather than read at runtime, so a row can show its
   // length without the app fetching files it may never play.
   //
-  // Names are what the clips actually are, which is not what the source pages
-  // called them. Five were downloaded; two were the same bugle charge call as
-  // the first entry here, a whole tone lower, so they were dropped rather than
-  // shipped as three rows that sound the same. Filenames match the names, so
-  // the directory reads the way the tab does.
+  // The intro comes first because it is the one you play before anything else
+  // happens; the stingers below it are ordered shortest first, since length is
+  // what separates those in use.
+  //
+  // Their names are what the clips actually are, which is not what the source
+  // pages called them. Five were downloaded; two were the same bugle charge call
+  // as the first stinger here, a whole tone lower, so they were dropped rather
+  // than shipped as three rows that sound the same. Filenames match the names,
+  // so the directory reads the way the tab does.
   const SOUNDBOARD = [
+    { file: 'audio/simple/team-intro.wav', name: 'Your Bloordale Bombers', duration: 7.2 },
     { file: 'audio/sfx/charge.mp3', name: 'Charge', duration: 2.9,
       source: 'https://www.myinstants.com/en/instant/homerun-baseball-71397/' },
     { file: 'audio/sfx/charge-climb.mp3', name: 'Charge (Climb)', duration: 13.0,
@@ -734,7 +689,7 @@
     if (!sound || !sfxAudio) return;
 
     stopSunoPlayback();
-    stopBatterAndIntro();
+    stopBatterPlayback();
 
     sfxIdx = i;
     if (!audioHasSrc(sfxAudio, sound.file)) {
@@ -1111,8 +1066,9 @@
       walkupAudio.src = currentPlayer.walkup;
       try { walkupAudio.load(); } catch (_) {}
     }
-    // iOS throws InvalidStateError writing currentTime straight after load().
-    try { walkupAudio.currentTime = 0; } catch (_) {}
+    // iOS throws InvalidStateError writing currentTime straight after load();
+    // seekWalkupToStart swallows that and re-arms once metadata lands.
+    seekWalkupToStart();
     // Paused, or the announcement is still running solo in sequential mode:
     // nothing is audible to restart, and the scheduled hand-off will pick the
     // new file up on its own.
@@ -1147,6 +1103,37 @@
     if (list.length >= MAX_SONGS_PER_PLAYER) return;
     const next = list.concat([pick]);
     writePlayerSongs(playerNumber, next, next.length - 1);
+  }
+
+  // Move where a Deezer track starts. The ten seconds we play are re-measured
+  // for their new window: a track's intro and its chorus are rarely the same
+  // loudness, and the level has to match the announcement either way.
+  async function setSongStart(playerNumber, idx, seconds) {
+    const p = roster.find(x => x.number === playerNumber);
+    if (!p) return;
+    const { list, active } = songsFor(p);
+    const pick = list[idx];
+    if (!pick || pick.src !== 'deezer') return;
+
+    const start = Math.max(0, Math.min(MAX_CLIP_START_S, Math.round(seconds * 2) / 2));
+    const next = list.slice();
+    next[idx] = { ...pick, start };
+    writePlayerSongs(playerNumber, next, active);
+
+    try {
+      const blob = await idbGetBlob(String(pick.trackId));
+      if (!blob) return;
+      const gain = await measureClipGain(pick.trackId, blob, { start });
+      if (gain == null) return;
+      const after = songsFor(p);
+      const target = after.list[idx];
+      if (!target || !samePick(target, pick)) return;   // moved on since
+      const relevelled = after.list.slice();
+      relevelled[idx] = { ...target, gain };
+      writePlayerSongs(playerNumber, relevelled, after.active);
+    } catch (err) {
+      console.warn('Could not re-measure after a start change', err);
+    }
   }
 
   function removeSongAt(playerNumber, idx) {
@@ -1327,25 +1314,42 @@
     return blob;
   }
 
-  // Measure a downloaded clip so it plays at the same level as everything else.
-  // Same method as scripts/measure_song_gain.py: RMS across what we actually
-  // play, then the attenuation that brings it to the shared target. Never boosts
-  // — commercial masters peak within a dB of full scale, so a boost would clip.
-  async function measureClipGain(blob, seconds) {
+  // Decoding a preview costs ~100 ms, and moving a start-point slider re-measures
+  // the same track over and over, so the last decode is kept. One entry only: a
+  // decoded 30-second preview is about 10 MB.
+  let decodedClip = { trackId: null, buffer: null };
+
+  async function decodeClip(trackId, blob) {
+    const id = String(trackId);
+    if (decodedClip.trackId === id && decodedClip.buffer) return decodedClip.buffer;
     const ctx = ensureAudioCtx();
     if (!ctx || !ctx.decodeAudioData) return null;
+    const bytes = await blob.arrayBuffer();
+    const buffer = await ctx.decodeAudioData(bytes);
+    decodedClip = { trackId: id, buffer };
+    return buffer;
+  }
+
+  // Measure a downloaded clip so it plays at the same level as everything else.
+  // Same method as scripts/measure_song_gain.py: RMS across what we actually
+  // play — which means the ten seconds from the track's start point, not the ten
+  // at the top of the file — then the attenuation that brings it to the shared
+  // target. Never boosts: commercial masters peak within a dB of full scale, so
+  // a boost would clip.
+  async function measureClipGain(trackId, blob, opts = {}) {
+    const { start = 0, seconds = DEEZER_CLIP_DURATION_S } = opts;
     try {
-      const bytes = await blob.arrayBuffer();
-      const audio = await ctx.decodeAudioData(bytes);
-      const frames = seconds
-        ? Math.min(audio.length, Math.floor(audio.sampleRate * seconds))
-        : audio.length;
-      if (!frames) return null;
+      const audio = await decodeClip(trackId, blob);
+      if (!audio) return null;
+      const from = Math.max(0, Math.min(Math.floor(audio.sampleRate * start),
+                                        Math.max(0, audio.length - 1)));
+      const frames = Math.min(audio.length - from, Math.floor(audio.sampleRate * seconds));
+      if (frames <= 0) return null;
       let sum = 0;
       let counted = 0;
       for (let ch = 0; ch < audio.numberOfChannels; ch++) {
         const data = audio.getChannelData(ch);
-        for (let i = 0; i < frames; i++) sum += data[i] * data[i];
+        for (let i = from; i < from + frames; i++) sum += data[i] * data[i];
         counted += frames;
       }
       const rms = Math.sqrt(sum / Math.max(1, counted));
@@ -1376,10 +1380,14 @@
       });
     });
     if (!unmeasured.length) return;
-    const gain = await measureClipGain(blob, DEEZER_CLIP_DURATION_S);
-    if (gain == null) return;
-    unmeasured.forEach((pick) => { pick.gain = gain; });
-    saveSongs();
+    // Each pick can sit at a different point in the same track, so they are
+    // measured over their own windows rather than sharing one number.
+    let changed = false;
+    for (const pick of unmeasured) {
+      const gain = await measureClipGain(id, blob, { start: Number(pick.start) || 0 });
+      if (gain != null) { pick.gain = gain; changed = true; }
+    }
+    if (changed) saveSongs();
   }
 
   // Turn a Deezer search result into a pick.
@@ -1413,7 +1421,7 @@
     const blob = await ensureDeezerBlob(pick.trackId, pick.previewUrl);
     // Measure before saving, so the very first play is already at the right
     // level relative to the announcement.
-    const gain = await measureClipGain(blob, DEEZER_CLIP_DURATION_S);
+    const gain = await measureClipGain(pick.trackId, blob, { start: 0 });
     if (gain != null) pick.gain = gain;
     if (at >= 0) {
       setActiveSong(playerNumber, at);
@@ -1541,6 +1549,7 @@
         row.setAttribute('role', 'radio');
         row.setAttribute('aria-checked', isActive ? 'true' : 'false');
         row.innerHTML = `
+          <div class="song-pick-main">
           <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(info.title)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
           </button>
@@ -1549,17 +1558,24 @@
             <span class="song-opt-title-line">${info.explicit ? '<span class="explicit-badge" title="Explicit">E</span>' : ''}${escapeHtml(info.title)}</span>
             <span class="song-opt-sub">${escapeHtml(missing ? 'Not on this device — tap to download' : info.artist)}</span>
           </span>
-          ${info.deezer ? '<span class="song-opt-tag">Deezer</span>' : ''}
-          ${isActive && !missing ? '<span class="song-opt-tag playing-tag">Playing</span>' : ''}
-          <span class="song-opt-check" aria-hidden="true">
+          ${info.deezer && !info.art ? '<span class="song-opt-tag">Deezer</span>' : ''}
+          ${isActive && !missing
+            ? '<span class="song-opt-tag playing-tag">Playing</span>'
+            : `<span class="song-opt-check" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </span>
+          </span>`}
           ${list.length > 1 ? `<button class="song-opt-remove" type="button" aria-label="Remove ${escapeHtml(info.title)} from ${escapeHtml(p.firstName)}'s songs" title="Remove">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>` : ''}
+          </div>
         `;
 
         const previewBtn = row.querySelector('.song-opt-preview');
+        const pickStart = pick.src === 'deezer' ? (Number(pick.start) || 0) : 0;
+        let rangeInput = null;      // set below for Deezer rows
+        const previewSrc = () => (pick.src === 'deezer'
+          ? (deezerBlobUrls[pick.trackId] || pick.previewUrl)
+          : info.file);
         previewBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           if (missing) {
@@ -1567,10 +1583,11 @@
               .catch(err => console.warn('Redownload failed', err));
             return;
           }
-          const src = pick.src === 'deezer'
-            ? (deezerBlobUrls[pick.trackId] || pick.previewUrl)
-            : info.file;
-          togglePreview(src, previewBtn);
+          // A Deezer row auditions exactly the ten seconds the plate will hear.
+          togglePreview(previewSrc(), previewBtn, pick.src === 'deezer'
+            ? { start: Number(rangeInput ? rangeInput.value : pickStart) || 0,
+                seconds: DEEZER_CLIP_DURATION_S }
+            : {});
         });
 
         const removeBtn = row.querySelector('.song-opt-remove');
@@ -1582,7 +1599,9 @@
         }
 
         row.addEventListener('click', (e) => {
-          if (e.target.closest('.song-opt-preview') || e.target.closest('.song-opt-remove')) return;
+          if (e.target.closest('.song-opt-preview') ||
+              e.target.closest('.song-opt-remove') ||
+              e.target.closest('.song-start')) return;
           if (missing) {
             redownloadDeezerSong(p.number, pick)
               .catch(err => console.warn('Redownload failed', err));
@@ -1590,6 +1609,43 @@
           }
           setActiveSong(p.number, i);
         });
+
+        // A Deezer preview is thirty seconds and only ten of them play, so the
+        // track gets a start point. Library clips are already trimmed to the
+        // ten seconds someone chose, so they don't need one.
+        if (pick.src === 'deezer' && !missing) {
+          const startRow = document.createElement('div');
+          startRow.className = 'song-start' + (isActive ? ' on-active' : '');
+          startRow.innerHTML = `
+            <span class="song-start-label">Starts</span>
+            <input class="song-start-range" type="range"
+                   min="0" max="${MAX_CLIP_START_S}" step="0.5" value="${pickStart}"
+                   aria-label="Start ${escapeHtml(info.title)} this many seconds in">
+            <span class="song-start-value">${formatStartLabel(pickStart)}</span>
+          `;
+          rangeInput = startRow.querySelector('.song-start-range');
+          const valueEl = startRow.querySelector('.song-start-value');
+
+          // Live while dragging, saved on release: a re-measure per pixel of
+          // travel would decode the track dozens of times.
+          rangeInput.addEventListener('input', () => {
+            valueEl.textContent = formatStartLabel(Number(rangeInput.value));
+          });
+          rangeInput.addEventListener('change', () => {
+            const seconds = Number(rangeInput.value) || 0;
+            const wasAuditioning = previewBtn.classList.contains('playing');
+            setSongStart(p.number, i, seconds)
+              .catch(err => console.warn('Could not set start point', err));
+            // Keep the audition going from the new point, so dragging and
+            // listening is one loop instead of two steps.
+            if (wasAuditioning) {
+              stopPreview();
+              togglePreview(previewSrc(), previewBtn,
+                { start: seconds, seconds: DEEZER_CLIP_DURATION_S });
+            }
+          });
+          row.appendChild(startRow);
+        }
 
         opts.appendChild(row);
       });
@@ -1700,33 +1756,54 @@
     return div;
   }
 
-  function togglePreview(file, btn) {
-    const sameBtn = btn.classList.contains('playing');
-    // Always reset state of any other preview button
+  // Preview plays exactly what the plate will hear: from the track's start
+  // point, for as long as the walk-up would run. Auditioning the top of a
+  // preview when the walk-up begins twenty seconds in tells you nothing.
+  let previewStopTimer = null;
+  let previewingSrc = null;
+
+  const PREVIEW_PLAY_ICON =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+  const PREVIEW_PAUSE_ICON =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>';
+
+  function stopPreview() {
+    clearTimeout(previewStopTimer);
+    previewStopTimer = null;
+    previewingSrc = null;
     document.querySelectorAll('.song-opt-preview.playing').forEach(b => {
       b.classList.remove('playing');
-      b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+      b.innerHTML = PREVIEW_PLAY_ICON;
     });
     try { previewAudio.pause(); previewAudio.currentTime = 0; } catch (_) {}
+  }
 
+  function togglePreview(file, btn, opts = {}) {
+    const { start = 0, seconds = 0 } = opts;
+    const sameBtn = btn.classList.contains('playing');
+    stopPreview();
     if (sameBtn) return;
 
     previewAudio.src = file;
-    previewAudio.currentTime = 0;
+    previewingSrc = file;
+    const seek = () => { try { previewAudio.currentTime = start; } catch (_) {} };
+    seek();
+    if (start > 0 && previewAudio.readyState < 1) {
+      previewAudio.addEventListener('loadedmetadata', seek, { once: true });
+    }
+    if (seconds > 0) {
+      previewStopTimer = setTimeout(stopPreview, seconds * 1000);
+    }
     btn.classList.add('playing');
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>';
+    btn.innerHTML = PREVIEW_PAUSE_ICON;
     previewAudio.play().catch(() => {
       btn.classList.remove('playing');
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+      btn.innerHTML = PREVIEW_PLAY_ICON;
     });
   }
+
   // Stop preview when it ends naturally
-  previewAudio.addEventListener('ended', () => {
-    document.querySelectorAll('.song-opt-preview.playing').forEach(b => {
-      b.classList.remove('playing');
-      b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
-    });
-  });
+  previewAudio.addEventListener('ended', stopPreview);
 
   // === Deezer search modal ===
   // Owns its own previewAudio-like element so the modal's preview state is
@@ -2484,7 +2561,7 @@
     resumeAudioCtx();
     ensureWalkupRouting();
     setWalkupLevel(0);             // every music entry fades in (see startWalkupAudio)
-    walkupAudio.currentTime = 0;
+    seekWalkupToStart();
 
     if (player.announcement) {
       playbackPhase = 'announcement';
@@ -2588,6 +2665,47 @@
     return !!(currentPlayer && currentPlayer._deezerTrack && !currentPlayer._deezerTrack._missing);
   }
 
+  // Where in the file the current player's clip begins. Only Deezer tracks can
+  // carry a start point; a library clip is already trimmed to its ten seconds.
+  function walkupStartAt() {
+    const start = activeSongStart(currentPlayer);
+    if (!start) return 0;
+    const d = walkupAudio.duration;
+    // Never seek so late that there isn't a clip left to play.
+    if (isFinite(d) && d > 0) return Math.max(0, Math.min(start, d - 1));
+    return start;
+  }
+
+  function activeSongStart(player) {
+    if (!player) return 0;
+    const pick = (player._songs || [])[player._activeSongIdx || 0];
+    if (!pick || pick.src !== 'deezer') return 0;
+    // A pick whose audio is missing isn't what's playing — the roster default
+    // is, and that starts at the top.
+    if (player._deezerTrack && player._deezerTrack._missing) return 0;
+    const start = Number(pick.start);
+    return Number.isFinite(start) && start > 0 ? Math.min(start, MAX_CLIP_START_S) : 0;
+  }
+
+  // How far into the clip we actually play, as opposed to how far into the
+  // file. The two differ whenever a track has a start point set.
+  function walkupClipTime() {
+    return Math.max(0, (walkupAudio.currentTime || 0) - walkupStartAt());
+  }
+
+  // Seek to the top of the clip. Metadata may not have arrived yet — seeking a
+  // media element that has no timeline throws on iOS — so it's armed for the
+  // moment it does.
+  function seekWalkupToStart() {
+    const seek = () => {
+      try { walkupAudio.currentTime = walkupStartAt(); } catch (_) {}
+    };
+    seek();
+    if (walkupAudio.readyState < 1 && walkupStartAt() > 0) {
+      walkupAudio.addEventListener('loadedmetadata', seek, { once: true });
+    }
+  }
+
   // The measured level of the current player's song, 0-1. This is what makes
   // one ducking multiplier work for a hand-trimmed library clip and a
   // commercial master alike.
@@ -2622,7 +2740,8 @@
   function effectiveWalkupTotal() {
     const d = walkupAudio.duration;
     const cap = currentWalkupCap();
-    if (isFinite(d) && d > 0) return Math.min(d, cap);
+    // What's left of the file after the start point is what there is to play.
+    if (isFinite(d) && d > 0) return Math.min(Math.max(0, d - walkupStartAt()), cap);
     return cap;
   }
 
@@ -2653,7 +2772,7 @@
       // Both audios share the same t=0, so the master clock is whichever
       // is currently audible. Music is the steadier clock since it plays
       // through the entire at-bat.
-      const w = walkupAudio.currentTime;
+      const w = walkupClipTime();
       const a = announcementAudio.currentTime;
       return Math.max(w || 0, a || 0);
     }
@@ -2664,8 +2783,8 @@
     if (playbackPhase === 'walkup') {
       const ann = announcementTotal();
       return ann > 0
-        ? ann + walkupAudio.currentTime - OVERLAP_S
-        : walkupAudio.currentTime;
+        ? ann + walkupClipTime() - OVERLAP_S
+        : walkupClipTime();
     }
     return 0;
   }
@@ -2682,7 +2801,7 @@
       // is already several seconds in).
       const fadeStartMs = Math.max(
         0,
-        (total - FADE_OUT_S - walkupAudio.currentTime) * 1000
+        (total - FADE_OUT_S - walkupClipTime()) * 1000
       );
       walkupFadeTimeout = setTimeout(() => {
         fadeWalkup(walkupLevel, 0, FADE_OUT_S * 1000, () => {
@@ -2978,6 +3097,12 @@
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
+  // "0s" / "12s" / "12.5s" — plainer than a m:ss for a number under twenty.
+  function formatStartLabel(seconds) {
+    const s = Math.round((Number(seconds) || 0) * 2) / 2;
+    return `${Number.isInteger(s) ? s : s.toFixed(1)}s`;
+  }
+
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text == null ? '' : text;
