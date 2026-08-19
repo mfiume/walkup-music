@@ -203,6 +203,7 @@
 
     bindSunoPlayer();
     bindSoundboard();
+    bindCollapsibleSections();
     // Fire-and-forget: the Sounds tab fills in as soon as the manifest lands.
     loadSunoPlaylist();
 
@@ -407,7 +408,6 @@
 
   const sunoAudio = document.getElementById('suno-audio');
   const sunoTracksEl = document.getElementById('suno-tracks');
-  const sunoSubEl = document.getElementById('suno-sub');
   const sunoOpenEl = document.getElementById('suno-open');
 
   async function loadSunoPlaylist() {
@@ -430,13 +430,6 @@
     if (!sunoTracksEl || !sunoPlaylist) return;
     const tracks = sunoPlaylist.tracks || [];
 
-    if (sunoSubEl) {
-      const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
-      sunoSubEl.textContent = tracks.length
-        ? `${tracks.length} song${tracks.length === 1 ? '' : 's'} · ${formatTime(total)}`
-        : 'Between-innings playlist';
-    }
-
     if (!tracks.length) {
       sunoTracksEl.innerHTML = '<div class="src-offline">No songs in this playlist yet.</div>';
       return;
@@ -446,12 +439,12 @@
     tracks.forEach((track, i) => {
       const row = document.createElement('button');
       row.type = 'button';
-      row.className = 'suno-row';
+      row.className = 'track-row';
       row.dataset.idx = String(i);
 
       const art = track.art
-        ? `<img class="suno-art" src="${track.art}" alt="" loading="lazy" decoding="async">`
-        : '<span class="suno-art"></span>';
+        ? `<img class="track-art" src="${track.art}" alt="" loading="lazy" decoding="async">`
+        : '<span class="track-art"></span>';
 
       // Subtext is the caption written on the song in Suno, or nothing. Style
       // tags are deliberately not shown: they describe the generator, not the
@@ -461,14 +454,14 @@
 
       row.innerHTML = `
         ${art}
-        <span class="suno-meta">
-          <span class="suno-title">${escapeHtml(track.title)}</span>
-          ${sub ? `<span class="suno-tags">${escapeHtml(sub)}</span>` : ''}
+        <span class="track-meta">
+          <span class="track-title">${escapeHtml(track.title)}</span>
+          ${sub ? `<span class="track-sub">${escapeHtml(sub)}</span>` : ''}
         </span>
-        <span class="suno-dur">${track.duration ? formatTime(track.duration) : ''}</span>
-        <span class="suno-play">
-          <svg class="suno-play-icon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-          <svg class="suno-pause-icon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
+        <span class="track-dur">${track.duration ? formatTime(track.duration) : ''}</span>
+        <span class="track-play">
+          <svg class="track-icon-idle" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <svg class="track-icon-active" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
         </span>`;
 
       row.addEventListener('click', () => toggleSunoTrack(i));
@@ -476,8 +469,8 @@
 
       // Hairline progress bar, revealed only while this track is playing.
       const prog = document.createElement('div');
-      prog.className = 'suno-progress hidden';
-      prog.innerHTML = '<div class="suno-progress-fill"></div>';
+      prog.className = 'track-progress hidden';
+      prog.innerHTML = '<div class="track-progress-fill"></div>';
       sunoTracksEl.appendChild(prog);
     });
     syncSunoRows();
@@ -568,19 +561,20 @@
   function syncSunoRows() {
     if (!sunoTracksEl) return;
     const playing = sunoAudio && !sunoAudio.paused && sunoIdx >= 0;
-    sunoTracksEl.querySelectorAll('.suno-row').forEach((row) => {
+    setSectionPlaying('suno-card', playing);
+    sunoTracksEl.querySelectorAll('.track-row').forEach((row) => {
       const i = Number(row.dataset.idx);
       const isCurrent = i === sunoIdx;
       row.classList.toggle('playing', isCurrent && playing);
-      const playIcon = row.querySelector('.suno-play-icon');
-      const pauseIcon = row.querySelector('.suno-pause-icon');
-      if (playIcon) playIcon.style.display = isCurrent && playing ? 'none' : '';
-      if (pauseIcon) pauseIcon.style.display = isCurrent && playing ? '' : 'none';
+      const idleIcon = row.querySelector('.track-icon-idle');
+      const activeIcon = row.querySelector('.track-icon-active');
+      if (idleIcon) idleIcon.style.display = isCurrent && playing ? 'none' : '';
+      if (activeIcon) activeIcon.style.display = isCurrent && playing ? '' : 'none';
       const prog = row.nextElementSibling;
-      if (prog && prog.classList.contains('suno-progress')) {
+      if (prog && prog.classList.contains('track-progress')) {
         prog.classList.toggle('hidden', !isCurrent);
         if (!isCurrent) {
-          const fill = prog.querySelector('.suno-progress-fill');
+          const fill = prog.querySelector('.track-progress-fill');
           if (fill) fill.style.width = '0%';
         }
       }
@@ -591,9 +585,9 @@
   function startSunoProgress() {
     if (sunoProgressRaf) return;
     const tick = () => {
-      const row = sunoTracksEl && sunoTracksEl.querySelector('.suno-row.playing');
+      const row = sunoTracksEl && sunoTracksEl.querySelector('.track-row.playing');
       const fill = row && row.nextElementSibling
-        ? row.nextElementSibling.querySelector('.suno-progress-fill')
+        ? row.nextElementSibling.querySelector('.track-progress-fill')
         : null;
       if (fill && sunoAudio.duration) {
         fill.style.width = `${(sunoAudio.currentTime / sunoAudio.duration) * 100}%`;
@@ -659,37 +653,52 @@
   let sfxProgressRaf = null;
 
   const sfxAudio = document.getElementById('sfx-audio');
-  const sfxGridEl = document.getElementById('sfx-grid');
+  const sfxListEl = document.getElementById('sfx-list');
+
+  // Every stinger gets the same glyph in the slot where a Suno track carries
+  // its cover art, so the two lists sit under each other with one rhythm.
+  const SFX_GLYPH =
+    '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/>' +
+    '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
 
   function renderSoundboard() {
-    if (!sfxGridEl) return;
-    sfxGridEl.innerHTML = '';
+    if (!sfxListEl) return;
+    sfxListEl.innerHTML = '';
     SOUNDBOARD.forEach((sound, i) => {
-      const pad = document.createElement('button');
-      pad.type = 'button';
-      pad.className = 'sfx-pad';
-      pad.dataset.idx = String(i);
-      // Whole seconds, not m:ss: every stinger is shorter than a pitch, and
-      // "3s" reads faster than "0:03" on a pad the size of a thumb.
-      pad.innerHTML = `
-        <span class="sfx-pad-top">
-          <span class="sfx-icon" aria-hidden="true">
-            <svg class="sfx-play-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-            <svg class="sfx-stop-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
-          </span>
-          <span class="sfx-dur">${Math.round(sound.duration)}s</span>
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'track-row';
+      row.dataset.idx = String(i);
+      // Whole seconds, not m:ss. Every stinger is shorter than a pitch, and
+      // "3s" reads faster than "0:03" at a glance.
+      row.innerHTML = `
+        <span class="track-art track-art--glyph" aria-hidden="true">${SFX_GLYPH}</span>
+        <span class="track-meta">
+          <span class="track-title">${escapeHtml(sound.name)}</span>
         </span>
-        <span class="sfx-name">${escapeHtml(sound.name)}</span>
-        <span class="sfx-progress" aria-hidden="true"><span class="sfx-progress-fill"></span></span>`;
-      pad.addEventListener('click', () => toggleSfx(i));
-      sfxGridEl.appendChild(pad);
+        <span class="track-dur">${Math.round(sound.duration)}s</span>
+        <span class="track-play">
+          <svg class="track-icon-idle" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <svg class="track-icon-active" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+        </span>`;
+      row.addEventListener('click', () => toggleSfx(i));
+      sfxListEl.appendChild(row);
+
+      // Hairline progress bar, revealed only while this stinger is playing.
+      const prog = document.createElement('div');
+      prog.className = 'track-progress hidden';
+      prog.innerHTML = '<div class="track-progress-fill"></div>';
+      sfxListEl.appendChild(prog);
     });
-    syncSfxPads();
+    syncSfxRows();
   }
 
-  // Tapping a pad that is already playing stops it. A stinger is short enough
+  // Tapping a row that is already playing stops it. A stinger is short enough
   // that re-triggering it mid-play is rarely what you want, and the long organ
-  // charges are exactly the ones you sometimes need to cut off.
+  // charges are exactly the ones you sometimes need to cut off. The icon says
+  // so: a square, not a pause bar, because there is nothing to resume.
   function toggleSfx(i) {
     if (i === sfxIdx && sfxAudio && !sfxAudio.paused) {
       stopSfx();
@@ -722,7 +731,7 @@
     if (p && p.catch) p.catch((e) => console.warn('Soundboard playback failed', e));
     // Real audio is playing, so the Bluetooth keepalive tone isn't needed.
     stopKeepalive();
-    syncSfxPads();
+    syncSfxRows();
   }
 
   function stopSfx() {
@@ -732,28 +741,33 @@
     }
     sfxIdx = -1;
     try { sfxAudio.currentTime = 0; } catch (_) {}
-    syncSfxPads();
+    syncSfxRows();
   }
 
-  // Reflect playback state on the pads: play/stop icon, gold fill, and the
-  // progress hairline along the bottom of the pad that's firing.
-  function syncSfxPads() {
-    if (!sfxGridEl) return;
+  // Reflect playback state on the rows: play/stop icon, gold highlight, and
+  // the progress hairline under the stinger that's firing.
+  function syncSfxRows() {
+    if (!sfxListEl) return;
     const playing = sfxAudio && !sfxAudio.paused && sfxIdx >= 0;
-    sfxGridEl.querySelectorAll('.sfx-pad').forEach((pad) => {
-      const i = Number(pad.dataset.idx);
+    setSectionPlaying('soundboard-card', playing);
+    sfxListEl.querySelectorAll('.track-row').forEach((row) => {
+      const i = Number(row.dataset.idx);
       const sound = SOUNDBOARD[i];
       const isCurrent = i === sfxIdx && playing;
-      pad.classList.toggle('playing', isCurrent);
-      pad.setAttribute('aria-label',
+      row.classList.toggle('playing', isCurrent);
+      row.setAttribute('aria-label',
         `${isCurrent ? 'Stop' : 'Play'} ${sound ? sound.name : 'sound'}`);
-      const playIcon = pad.querySelector('.sfx-play-icon');
-      const stopIcon = pad.querySelector('.sfx-stop-icon');
-      if (playIcon) playIcon.style.display = isCurrent ? 'none' : '';
-      if (stopIcon) stopIcon.style.display = isCurrent ? '' : 'none';
-      if (!isCurrent) {
-        const fill = pad.querySelector('.sfx-progress-fill');
-        if (fill) fill.style.width = '0%';
+      const idleIcon = row.querySelector('.track-icon-idle');
+      const activeIcon = row.querySelector('.track-icon-active');
+      if (idleIcon) idleIcon.style.display = isCurrent ? 'none' : '';
+      if (activeIcon) activeIcon.style.display = isCurrent ? '' : 'none';
+      const prog = row.nextElementSibling;
+      if (prog && prog.classList.contains('track-progress')) {
+        prog.classList.toggle('hidden', !isCurrent);
+        if (!isCurrent) {
+          const fill = prog.querySelector('.track-progress-fill');
+          if (fill) fill.style.width = '0%';
+        }
       }
     });
     if (playing) startSfxProgress(); else stopSfxProgress();
@@ -762,8 +776,10 @@
   function startSfxProgress() {
     if (sfxProgressRaf) return;
     const tick = () => {
-      const pad = sfxGridEl && sfxGridEl.querySelector('.sfx-pad.playing');
-      const fill = pad ? pad.querySelector('.sfx-progress-fill') : null;
+      const row = sfxListEl && sfxListEl.querySelector('.track-row.playing');
+      const fill = row && row.nextElementSibling
+        ? row.nextElementSibling.querySelector('.track-progress-fill')
+        : null;
       if (fill && sfxAudio.duration) {
         fill.style.width = `${(sfxAudio.currentTime / sfxAudio.duration) * 100}%`;
       }
@@ -783,14 +799,77 @@
     // One-shots: nothing rolls on to the next pad when a stinger ends.
     sfxAudio.addEventListener('ended', () => {
       sfxIdx = -1;
-      syncSfxPads();
+      syncSfxRows();
       startKeepalive();
     });
-    sfxAudio.addEventListener('pause', () => { syncSfxPads(); startKeepalive(); });
-    sfxAudio.addEventListener('play', syncSfxPads);
+    sfxAudio.addEventListener('pause', () => { syncSfxRows(); startKeepalive(); });
+    sfxAudio.addEventListener('play', syncSfxRows);
     sfxAudio.addEventListener('error', () => {
       console.warn('Soundboard audio error', sfxAudio.currentSrc);
     });
+  }
+
+  // === Collapsible source cards ============================================
+  //
+  // The Sounds tab stacks a soundboard and two playlists, and mid-game a coach
+  // wants one of them, not all three. Folding a card shut pulls the others up
+  // the screen and within thumb reach. The choice is saved per card: whoever
+  // closes the playlist to get the stingers to the top wants them there next
+  // inning too.
+  //
+  // Collapsing does not stop anything that's playing — you might well fold the
+  // playlist away while it plays to reach a stinger — so a closed card that is
+  // still making noise shows a gold dot in its header, which is the only cue
+  // left once its rows are hidden.
+  let collapsedSections = (() => {
+    try { return JSON.parse(localStorage.getItem('walkup-simple-collapsed') || '{}') || {}; }
+    catch (_) { return {}; }
+  })();
+
+  function bindCollapsibleSections() {
+    document.querySelectorAll('.src-toggle').forEach((btn) => {
+      const card = btn.closest('.src-card');
+      const name = btn.dataset.section;
+      if (!card || !name) return;
+
+      setSectionCollapsed(card, name, !!collapsedSections[name], { save: false });
+
+      // The whole header is the hit target, not just the chevron — but the
+      // Open link sitting inside it still has to open its app. The chevron is
+      // a real button, so it comes along for free: its click bubbles up here.
+      const head = card.querySelector('.src-head');
+      if (!head) return;
+      head.addEventListener('click', (e) => {
+        if (e.target.closest('.src-link')) return;
+        setSectionCollapsed(card, name, !card.classList.contains('collapsed'));
+      });
+    });
+  }
+
+  function setSectionCollapsed(card, name, collapsed, opts = {}) {
+    const { save = true } = opts;
+    card.classList.toggle('collapsed', collapsed);
+
+    const btn = card.querySelector('.src-toggle');
+    if (btn) {
+      const nameEl = card.querySelector('.src-name');
+      const what = nameEl ? nameEl.textContent.trim() : 'section';
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      btn.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${what}`);
+    }
+
+    if (!save) return;
+    collapsedSections[name] = collapsed;
+    try {
+      localStorage.setItem('walkup-simple-collapsed', JSON.stringify(collapsedSections));
+    } catch (_) { /* storage full / disabled — ignore */ }
+  }
+
+  // Mark a card as having audio going, for the dot that shows while it's
+  // folded shut. Called from both lists' sync functions.
+  function setSectionPlaying(cardId, playing) {
+    const card = document.getElementById(cardId);
+    if (card) card.classList.toggle('has-playing', !!playing);
   }
 
   // === Per-player song overrides ===

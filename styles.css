@@ -1514,14 +1514,14 @@ body.modal-open { overflow: hidden; }
 }
 
 /* === Sounds view ============================================================
-   Three cards. The soundboard comes first: it is the one thing on the tab a
-   coach reaches for mid-play, so it gets the top of the screen and pads big
-   enough to hit without looking. Below it, two music sources, each badged with
-   its own logo so there is never a question about which service is playing.
-   Spotify is a link out (its embed only gives 30-second previews, no use for
-   an inning break). Suno's tracks are mirrored into audio/suno/ and played by
-   the app itself — their pages refuse to be framed, and mirroring is what
-   makes them work with no signal. */
+   Three cards, each of which folds shut so the one being used can sit at the
+   top of the screen. The soundboard comes first: it is the one thing on the
+   tab a coach reaches for mid-play. Below it, two music sources, each badged
+   with its own logo so there is never a question about which service is
+   playing. Spotify is a link out (its embed only gives 30-second previews, no
+   use for an inning break). Suno's tracks are mirrored into audio/suno/ and
+   played by the app itself — their pages refuse to be framed, and mirroring is
+   what makes them work with no signal. */
 
 .src-card {
   background: var(--panel);
@@ -1557,6 +1557,16 @@ body.modal-open { overflow: hidden; }
 }
 .spotify-logo svg { width: 34px; height: 34px; display: block; }
 
+/* The soundboard is ours, not a service, so its badge is the team's green and
+   gold rather than a logo. */
+.sfx-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  color: var(--accent);
+}
+
 .src-titles { min-width: 0; flex: 1; }
 .src-name {
   font-weight: 700;
@@ -1564,14 +1574,6 @@ body.modal-open { overflow: hidden; }
   letter-spacing: 0.01em;
   line-height: 1.25;
 }
-.src-sub {
-  font-size: 0.8rem;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .src-link {
   display: inline-flex;
   align-items: center;
@@ -1599,115 +1601,62 @@ body.modal-open { overflow: hidden; }
   text-align: center;
 }
 
-/* --- Soundboard pads ---
-   A grid of thumb-sized one-shots. Two columns on a phone; an odd last pad
-   takes the whole row so the grid never ends ragged. */
-.sfx-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--green);
-  color: var(--accent);
-}
+/* --- Collapse control ---
+   The header is the hit target; the chevron is the affordance. Cards with
+   nothing behind them (Spotify is a link and no more) get neither. */
+.src-head:has(.src-toggle) { cursor: pointer; }
 
-.sfx-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-  padding: 12px 13px;
-}
-.sfx-pad:last-child:nth-child(odd) { grid-column: 1 / -1; }
-
-.sfx-pad {
-  position: relative;
-  overflow: hidden;          /* clips the progress hairline to the radius */
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 76px;
-  padding: 10px 11px 12px;
-  text-align: left;
-  color: var(--text);
-  background: linear-gradient(180deg, var(--panel-2), rgba(19, 48, 34, 0.5));
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  transition: background 0.15s, border-color 0.15s, transform 0.08s;
-}
-.sfx-pad:hover { border-color: rgba(var(--accent-rgb), 0.4); }
-.sfx-pad:active { transform: scale(0.97); }
-.sfx-pad.playing {
-  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.2), rgba(var(--accent-rgb), 0.05));
-  border-color: rgba(var(--accent-rgb), 0.65);
-}
-
-.sfx-pad-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-}
-.sfx-icon {
-  width: 28px;
-  height: 28px;
+.src-toggle {
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.sfx-pad:hover .sfx-icon {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: rgba(var(--accent-rgb), 0.5);
-}
-.sfx-pad.playing .sfx-icon {
-  background: var(--accent);
-  color: var(--green);
-  border-color: var(--accent);
-}
-
-.sfx-dur {
-  font-size: 0.72rem;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
 }
-.sfx-name {
-  font-weight: 700;
-  font-size: 0.95rem;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-}
-.sfx-pad.playing .sfx-name { color: var(--accent); }
+.src-head:hover .src-toggle { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.src-chevron { transition: transform 0.2s ease; }
+.src-card.collapsed .src-chevron { transform: rotate(-90deg); }
 
-/* Progress hairline along the bottom edge of the pad that's firing. */
-.sfx-progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: rgba(var(--accent-rgb), 0.18);
-  opacity: 0;
-}
-.sfx-pad.playing .sfx-progress { opacity: 1; }
-.sfx-progress-fill {
-  display: block;
-  height: 100%;
-  width: 0%;
+/* A folded card keeps its list in the DOM but off the screen, and its header
+   divider would otherwise sit on the card's own bottom edge as a double line. */
+.src-card.collapsed .track-list { display: none; }
+.src-card.collapsed .src-head { border-bottom: 0; }
+
+/* Something in this card is still playing while it's folded shut — the rows
+   that would say so are hidden, so the header says it instead. */
+.src-playing {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: var(--accent);
-  transition: width 0.15s linear;
+  flex-shrink: 0;
+  display: none;
+  box-shadow: 0 0 0 rgba(var(--accent-rgb), 0.5);
+  animation: src-playing-pulse 1.8s ease-out infinite;
+}
+.src-card.collapsed.has-playing .src-playing { display: block; }
+@keyframes src-playing-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .src-playing { animation: none; }
+  .src-chevron { transition: none; }
 }
 
-/* --- Suno track list --- */
-.suno-tracks { display: flex; flex-direction: column; }
+/* --- Track rows ---
+   One row per playable thing, shared by the soundboard and the Suno playlist:
+   art (or glyph), title, length, transport button, and a progress hairline
+   underneath. The two lists sit one under the other on the same screen, so
+   they are the same component rather than two that merely look alike. */
+.track-list { display: flex; flex-direction: column; }
 
-.suno-row {
+.track-row {
   display: flex;
   align-items: center;
   gap: 11px;
@@ -1718,17 +1667,17 @@ body.modal-open { overflow: hidden; }
   border-top: 1px solid rgba(31, 61, 44, 0.55);
   transition: background 0.15s;
 }
-.suno-row:first-child { border-top: 0; }
-.suno-row:hover { background: var(--panel-2); }
-.suno-row:active { background: var(--panel-2); }
+.track-row:first-child { border-top: 0; }
+.track-row:hover { background: var(--panel-2); }
+.track-row:active { background: var(--panel-2); }
 /* No left accent bar: it met the gold progress hairline under the row at the
    bottom-left corner and the two read as one bent line. The tinted background,
-   gold title and filled play button already carry the state. */
-.suno-row.playing {
+   gold title and filled transport button already carry the state. */
+.track-row.playing {
   background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.13), rgba(var(--accent-rgb), 0.04));
 }
 
-.suno-art {
+.track-art {
   width: 42px;
   height: 42px;
   border-radius: 8px;
@@ -1737,17 +1686,25 @@ body.modal-open { overflow: hidden; }
   background: var(--panel-2);
   border: 1px solid var(--border);
 }
+/* A stinger has no cover art, so the same slot carries a glyph. */
+.track-art--glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: rgba(var(--green-rgb), 0.35);
+}
 
 /* Column, and the children are blocks: an inline span can't be ellipsised, so
    a long title would otherwise run straight under the duration on a 320px
    phone instead of truncating. */
-.suno-meta {
+.track-meta {
   min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
 }
-.suno-title {
+.track-title {
   display: block;
   font-weight: 600;
   font-size: 0.95rem;
@@ -1755,8 +1712,8 @@ body.modal-open { overflow: hidden; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.suno-row.playing .suno-title { color: var(--accent); }
-.suno-tags {
+.track-row.playing .track-title { color: var(--accent); }
+.track-sub {
   display: block;
   font-size: 0.76rem;
   color: var(--muted);
@@ -1765,14 +1722,14 @@ body.modal-open { overflow: hidden; }
   text-overflow: ellipsis;
 }
 
-.suno-dur {
+.track-dur {
   font-size: 0.78rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 
-.suno-play {
+.track-play {
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -1785,23 +1742,23 @@ body.modal-open { overflow: hidden; }
   flex-shrink: 0;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.suno-row:hover .suno-play {
+.track-row:hover .track-play {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: rgba(var(--accent-rgb), 0.5);
 }
-.suno-row.playing .suno-play {
+.track-row.playing .track-play {
   background: var(--accent);
   color: var(--green);
   border-color: var(--accent);
 }
 
-/* Progress hairline under the track that's currently playing. */
-.suno-progress {
+/* Progress hairline under the row that's currently playing. */
+.track-progress {
   height: 2px;
   background: rgba(var(--accent-rgb), 0.18);
 }
-.suno-progress-fill {
+.track-progress-fill {
   height: 100%;
   width: 0%;
   background: var(--accent);

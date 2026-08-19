@@ -31,7 +31,7 @@
   <meta name="twitter:description" content="Announcements + walk-up music for every batter, every at-bat.">
   <meta name="twitter:image" content="https://mfiume.github.io/walkup-music/og-image.png?v=1">
 
-  <link rel="stylesheet" href="styles.css?v=31">
+  <link rel="stylesheet" href="styles.css?v=32">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -101,7 +101,7 @@
            clips are mirrored into audio/sfx/ from myinstants.com (each file's
            source page is listed beside it in app.js) for the same reason the
            Suno tracks are mirrored: a stinger that has to buffer is a stinger
-           that lands after the moment it was for. The pads are rendered by
+           that lands after the moment it was for. The rows are rendered by
            app.js from the SOUNDBOARD list. -->
       <section class="src-card" id="soundboard-card">
         <header class="src-head">
@@ -112,10 +112,14 @@
           </span>
           <div class="src-titles">
             <div class="src-name">Soundboard</div>
-            <div class="src-sub">Tap to fire, tap again to stop</div>
           </div>
+          <span class="src-playing" role="img" aria-label="Playing"></span>
+          <button class="src-toggle" type="button" data-section="soundboard"
+                  aria-expanded="true" aria-controls="sfx-list" aria-label="Collapse Soundboard">
+            <svg class="src-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
         </header>
-        <div id="sfx-grid" class="sfx-grid"></div>
+        <div id="sfx-list" class="track-list"></div>
       </section>
 
       <!-- Spotify: link-out only. Their embed caps playback at 30-second
@@ -129,7 +133,6 @@
           </span>
           <div class="src-titles">
             <div class="src-name">Spotify</div>
-            <div class="src-sub">Full songs in the Spotify app</div>
           </div>
           <a class="src-link" href="https://open.spotify.com/playlist/4XdSaPrftwgQ7KO2tkmmbv" target="_blank" rel="noopener">
             Open
@@ -147,7 +150,6 @@
           <img class="src-logo" src="suno-logo.png" width="34" height="34" alt="Suno" decoding="async">
           <div class="src-titles">
             <div class="src-name">Suno</div>
-            <div class="src-sub" id="suno-sub">Between-innings playlist</div>
           </div>
           <a class="src-link" id="suno-open" href="https://suno.com/playlist/f5dc5fd1-9dc5-4dd0-baaf-c9a19441e943" target="_blank" rel="noopener">
             Open
@@ -155,8 +157,13 @@
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
           </a>
+          <span class="src-playing" role="img" aria-label="Playing"></span>
+          <button class="src-toggle" type="button" data-section="suno"
+                  aria-expanded="true" aria-controls="suno-tracks" aria-label="Collapse Suno">
+            <svg class="src-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
         </header>
-        <div id="suno-tracks" class="suno-tracks"></div>
+        <div id="suno-tracks" class="track-list"></div>
       </section>
     </section>
 
@@ -301,6 +308,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=47"></script>
+  <script src="app.js?v=48"></script>
 </body>
 </html>
