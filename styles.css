@@ -1635,15 +1635,6 @@ body.modal-open { overflow: hidden; }
   margin-top: 4px;
 }
 
-/* Shown only when the device can't do what the mode above describes. */
-.settings-warn {
-  color: var(--accent);
-  border-left: 2px solid rgba(var(--accent-rgb), 0.5);
-  padding-left: 10px;
-  margin-top: 10px;
-}
-.settings-warn[hidden] { display: none; }
-
 /* === Sounds view ============================================================
    Three cards, ordered by how much they get used and each folding shut so the
    one in play can sit at the top of the screen. The soundboard comes first: it

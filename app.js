@@ -54,10 +54,14 @@
   let currentBatterIdx = -1;       // index into lineup; -1 = roster preview / none
   let currentPlayer = null;
   let playbackPhase = null;        // 'announcement' | 'walkup' | null
+  // True while the thing in the walk-up element is a rendered at-bat — one clip
+  // with the announcement and the song already mixed. Then there is no
+  // announcement element, no level to ride and no fade to schedule: the file
+  // already sounds the way it should.
+  let playingMix = false;
   let isPaused = false;
   let progressInterval = null;
   let walkupFadeTimeout = null;
-  let announcementOverlapTimer = null;
   let wakeLock = null;
   // 'sequential' (announcement first, music ducks in at the tail) or
   // 'overlap' (music plays under announcement from t=0 then ramps up).
@@ -233,7 +237,6 @@
     bindMediaSession();
     bindDeezerModal();
     bindAudioUnlock();
-    updateDuckNote();
 
     // Restore the lineup cursor so a hard refresh returns to whoever was Up
     // Next / batting, not the leadoff hitter. Falls back to 0 if the saved
@@ -253,6 +256,10 @@
     renderLineup();
     renderAvailable();
     updatePlaybackBar();
+
+    // Render every at-bat this roster could need, in the background. Cached in
+    // IndexedDB, so this is a no-op on every start after the first.
+    scheduleMixSweep();
 
     // Keep the Bluetooth speaker awake even before the first batter is sent up.
     // The very first tone won't make sound until the user taps something
@@ -1018,6 +1025,12 @@
       p.artist = info.artist;
       p.explicit = info.explicit;
     });
+    // Whatever is already rendered is available immediately; anything missing is
+    // rendered in the background by sweepMixes().
+    roster.forEach(p => {
+      const pick = (p._songs || [])[p._activeSongIdx || 0];
+      p._mixUrl = pick ? mixUrlFor(p, pick) : null;
+    });
   }
 
   function saveSongs() {
@@ -1038,6 +1051,7 @@
     };
     saveSongs();
     applySongSelections();
+    scheduleMixSweep();
 
     renderSongOptionsList();
     renderAvailable();
@@ -1060,6 +1074,21 @@
   // the kid's name twice would be worse than a hard cut.
   function restartWalkupWithActiveSong() {
     if (!currentPlayer) return;
+
+    if (playingMix) {
+      // One clip, so the name and the song are the same recording: switching
+      // songs restarts the at-bat rather than swapping the music under a
+      // sentence that is already half spoken.
+      const pick = (currentPlayer._songs || [])[currentPlayer._activeSongIdx || 0];
+      ensureMix(currentPlayer, pick).then((url) => {
+        if (!url || !currentPlayer) return;
+        currentPlayer._mixUrl = url;
+        if (playbackPhase) playPlayer(currentPlayer);
+        else preloadForPlayer(currentPlayer);
+      }).catch(() => {});
+      return;
+    }
+
     const wasPlaying = !walkupAudio.paused;
     clearTimeout(walkupFadeTimeout);
     cancelFades();
@@ -1074,7 +1103,7 @@
     // nothing is audible to restart, and the scheduled hand-off will pick the
     // new file up on its own.
     if (isPaused || !wasPlaying) return;
-    startWalkupAudio(playbackPhase === 'walkup' ? fullVol() : duckedVol());
+    startWalkupAudio(fullVol());
     if (playbackPhase === 'walkup') armWalkupFadeOut();
   }
 
@@ -1183,6 +1212,390 @@
   // appears consistently (roster, lineup, playback bar, Now Playing, etc.).
   function songLabelHtml(player) {
     return explicitBadgeHtml(player) + escapeHtml(songLine(player));
+  }
+
+  // === At-bat mixes ==========================================================
+  // The announcement and the song are mixed into one clip, ahead of time, and
+  // that clip is what plays at the plate.
+  //
+  // The app used to play two elements at once and ride the music's level under
+  // the announcement. That only works where the browser lets JavaScript set an
+  // output level, and iOS does not: it accepts the value, reads it back, and
+  // ignores it. Everything downstream of that — ducking, the ramp, the fade —
+  // was silent on the one device this app is used on.
+  //
+  // Mixing offline moves all of it somewhere the rules are the same everywhere.
+  // An OfflineAudioContext is a renderer, not an output device, so its gain
+  // automation is honoured on every browser; the result is a plain file that
+  // plays at whatever volume the phone's buttons are set to. Game time needs no
+  // audio graph, no unlocking, no capability test: set src, press play.
+  //
+  // The two-element path is still here as a fallback for anything that can't be
+  // rendered, and it no longer tries to duck: it plays the name, then the song.
+  const MIX_DB_NAME = 'walkup-simple-mixes';
+  const MIX_DB_VERSION = 1;
+  const MIX_STORE = 'mixes';
+  const MIX_KEY_VERSION = 'v1';
+  const MIX_SAMPLE_RATE = 44100;
+  // Every batter's own song stays open, plus the alternates of whoever is up:
+  // any player can be tapped from the lineup or the roster, in any order, and
+  // has to start on the tap rather than after a trip to storage.
+  const MIX_URL_CACHE_MAX = 20;
+
+  let mixDbPromise = null;
+  const mixUrlCache = new Map();     // key -> object URL, in use order
+  const mixRendering = new Map();    // key -> promise, so a mix renders once
+  const mixKnown = new Set();        // keys we have on disk
+  let mixDecodeCtx = null;
+
+  function openMixDb() {
+    if (mixDbPromise) return mixDbPromise;
+    mixDbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(MIX_DB_NAME, MIX_DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(MIX_STORE)) db.createObjectStore(MIX_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return mixDbPromise;
+  }
+
+  async function mixDbGet(key) {
+    const db = await openMixDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(MIX_STORE, 'readonly').objectStore(MIX_STORE).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function mixDbPut(key, blob) {
+    const db = await openMixDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(MIX_STORE, 'readwrite');
+      tx.objectStore(MIX_STORE).put(blob, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function mixDbKeys() {
+    const db = await openMixDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(MIX_STORE, 'readonly').objectStore(MIX_STORE).getAllKeys();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function mixDbDelete(key) {
+    const db = await openMixDb();
+    return new Promise((resolve) => {
+      const tx = db.transaction(MIX_STORE, 'readwrite');
+      tx.objectStore(MIX_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  }
+
+  // Everything that changes what the clip should sound like is in the key, so a
+  // stale mix can never be played: change the song, the start point, the
+  // measured level or the walk-up mode and it renders again under a new name.
+  function mixKey(player, pick) {
+    if (!player || !pick) return null;
+    const song = pick.src === 'deezer'
+      ? `dz:${pick.trackId}@${Number(pick.start) || 0}`
+      : `lib:${pick.file}`;
+    return [
+      MIX_KEY_VERSION,
+      player.number,
+      player.announcement || 'no-announcement',
+      song,
+      playbackMode,
+      pickGain(pick, player).toFixed(3),
+    ].join('|');
+  }
+
+  // decodeAudioData needs a BaseAudioContext but not an output device, and an
+  // OfflineAudioContext is one that never needs a user gesture — so mixes can
+  // render before anyone has tapped anything.
+  function decodeContext() {
+    if (mixDecodeCtx) return mixDecodeCtx;
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Offline) return null;
+    try { mixDecodeCtx = new Offline(1, 1, MIX_SAMPLE_RATE); } catch (_) { mixDecodeCtx = null; }
+    return mixDecodeCtx;
+  }
+
+  async function decodeArrayBuffer(bytes) {
+    const ctx = decodeContext();
+    if (!ctx) return null;
+    return new Promise((resolve, reject) => {
+      // The callback form, because Safari only grew the promise form late.
+      let settled = false;
+      const ok = (buf) => { if (!settled) { settled = true; resolve(buf); } };
+      const fail = (err) => { if (!settled) { settled = true; reject(err || new Error('decode failed')); } };
+      try {
+        const p = ctx.decodeAudioData(bytes, ok, fail);
+        if (p && p.then) p.then(ok, fail);
+      } catch (err) { fail(err); }
+    });
+  }
+
+  async function decodeUrl(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch failed: ${url}`);
+    return decodeArrayBuffer(await res.arrayBuffer());
+  }
+
+  async function decodePickAudio(pick, player) {
+    if (pick.src === 'deezer') {
+      const blob = await idbGetBlob(String(pick.trackId));
+      if (!blob) return null;                 // not on this device yet
+      return decodeArrayBuffer(await blob.arrayBuffer());
+    }
+    return decodeUrl(pick.file || player._defaultWalkup);
+  }
+
+  // Where the music sits over the length of the at-bat: in under the
+  // announcement, up when the name is out, down again at the end. The same
+  // shape the live path used to attempt, drawn once where it works.
+  function scheduleMixGain(gainNode, opts) {
+    const { musicAt, musicLen, voiceEnd, level } = opts;
+    const ducked = level * MUSIC_DUCKED_VOL;
+    const end = musicAt + musicLen;
+    const g = gainNode.gain;
+
+    g.setValueAtTime(0, musicAt);
+    if (voiceEnd > musicAt + FADE_IN_S) {
+      // Fade in under the voice, hold there, then ramp up once it finishes.
+      g.linearRampToValueAtTime(ducked, musicAt + FADE_IN_S);
+      g.setValueAtTime(ducked, Math.max(musicAt + FADE_IN_S, voiceEnd));
+      g.linearRampToValueAtTime(level, Math.min(end, voiceEnd + MUSIC_RAMP_S));
+    } else {
+      g.linearRampToValueAtTime(level, Math.min(end, musicAt + FADE_IN_S));
+    }
+    const fadeFrom = Math.max(musicAt, end - FADE_OUT_S);
+    g.setValueAtTime(g.value === undefined ? level : level, fadeFrom);
+    g.linearRampToValueAtTime(0, end);
+  }
+
+  // Render one player + one song into a single clip.
+  async function renderAtBatMix(player, pick) {
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Offline) return null;
+
+    const [voice, music] = await Promise.all([
+      player.announcement ? decodeUrl(player.announcement).catch(() => null) : null,
+      decodePickAudio(pick, player),
+    ]);
+    if (!music) return null;
+
+    const cap = pick.src === 'deezer' ? DEEZER_CLIP_DURATION_S : WALKUP_DURATION_S;
+    const start = pick.src === 'deezer'
+      ? Math.max(0, Math.min(Number(pick.start) || 0, Math.max(0, music.duration - 1)))
+      : 0;
+    const musicLen = Math.max(0.5, Math.min(cap, music.duration - start));
+    const voiceLen = voice ? voice.duration : 0;
+
+    // Overlap: both start together and the music is ducked until the name is
+    // out. Sequential: the music ducks in under the tail of the announcement.
+    const overlapMode = playbackMode === 'overlap';
+    const musicAt = (!voiceLen || overlapMode) ? 0 : Math.max(0, voiceLen - OVERLAP_S);
+    const total = Math.max(voiceLen, musicAt + musicLen);
+    const frames = Math.ceil(total * MIX_SAMPLE_RATE);
+    if (!(frames > 0)) return null;
+
+    const ctx = new Offline(1, frames, MIX_SAMPLE_RATE);
+
+    if (voice) {
+      const voiceSrc = ctx.createBufferSource();
+      voiceSrc.buffer = voice;
+      voiceSrc.connect(ctx.destination);
+      voiceSrc.start(0);
+    }
+
+    const musicSrc = ctx.createBufferSource();
+    musicSrc.buffer = music;
+    const musicGain = ctx.createGain();
+    musicSrc.connect(musicGain).connect(ctx.destination);
+    scheduleMixGain(musicGain, {
+      musicAt,
+      musicLen,
+      voiceEnd: voiceLen,
+      level: MUSIC_FULL_VOL * pickGain(pick, player),
+    });
+    musicSrc.start(musicAt, start, musicLen + 0.1);
+
+    const rendered = await ctx.startRendering();
+    return wavBlob(rendered);
+  }
+
+  // 16-bit mono PCM. Uncompressed because there is no encoder in a browser worth
+  // shipping, and mono because a rendered at-bat is a megabyte either way and
+  // the speaker at a ball field is one cone.
+  function wavBlob(buffer) {
+    const data = buffer.getChannelData(0);
+    const len = data.length;
+    const view = new DataView(new ArrayBuffer(44 + len * 2));
+    const str = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+    str(0, 'RIFF');
+    view.setUint32(4, 36 + len * 2, true);
+    str(8, 'WAVE');
+    str(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);                       // PCM
+    view.setUint16(22, 1, true);                       // mono
+    view.setUint32(24, buffer.sampleRate, true);
+    view.setUint32(28, buffer.sampleRate * 2, true);   // byte rate
+    view.setUint16(32, 2, true);                       // block align
+    view.setUint16(34, 16, true);
+    str(36, 'data');
+    view.setUint32(40, len * 2, true);
+    for (let i = 0; i < len; i++) {
+      const v = Math.max(-1, Math.min(1, data[i]));
+      view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return new Blob([view.buffer], { type: 'audio/wav' });
+  }
+
+  // Render if we don't have it, then hand back a playable URL. Renders once per
+  // key however many callers ask at the same time.
+  function ensureMix(player, pick) {
+    const key = mixKey(player, pick);
+    if (!key) return Promise.resolve(null);
+    if (mixUrlCache.has(key)) return Promise.resolve(touchMixUrl(key));
+    if (mixRendering.has(key)) return mixRendering.get(key);
+
+    const work = (async () => {
+      try {
+        let blob = await mixDbGet(key);
+        if (!blob) {
+          blob = await renderAtBatMix(player, pick);
+          if (!blob) return null;
+          await mixDbPut(key, blob);
+        }
+        mixKnown.add(key);
+        return cacheMixUrl(key, URL.createObjectURL(blob));
+      } catch (err) {
+        console.warn('Could not prepare an at-bat mix', err);
+        return null;
+      } finally {
+        mixRendering.delete(key);
+      }
+    })();
+    mixRendering.set(key, work);
+    return work;
+  }
+
+  function cacheMixUrl(key, url) {
+    mixUrlCache.set(key, url);
+    while (mixUrlCache.size > MIX_URL_CACHE_MAX) {
+      const oldest = mixUrlCache.keys().next().value;
+      const stale = mixUrlCache.get(oldest);
+      mixUrlCache.delete(oldest);
+      try { URL.revokeObjectURL(stale); } catch (_) {}
+    }
+    return url;
+  }
+
+  function touchMixUrl(key) {
+    const url = mixUrlCache.get(key);
+    mixUrlCache.delete(key);
+    mixUrlCache.set(key, url);   // most recently used, so it survives eviction
+    return url;
+  }
+
+  function mixUrlFor(player, pick) {
+    const key = mixKey(player, pick);
+    return key && mixUrlCache.has(key) ? touchMixUrl(key) : null;
+  }
+
+  // Every mix the current roster and lineup could need.
+  function wantedMixKeys() {
+    const wanted = [];
+    roster.forEach((p) => {
+      (p._songs || []).forEach((pick) => {
+        const key = mixKey(p, pick);
+        if (key) wanted.push({ key, player: p, pick });
+      });
+    });
+    // Batters first, in the order they hit, so the ones needed soonest are ready
+    // first on a cold start.
+    const order = new Map(lineup.map((num, i) => [num, i]));
+    return wanted.sort((a, b) =>
+      (order.has(a.player.number) ? order.get(a.player.number) : 99) -
+      (order.has(b.player.number) ? order.get(b.player.number) : 99));
+  }
+
+  // Open a handle to every batter's at-bat, so a tap on any of them starts
+  // audio in the same gesture instead of waiting on IndexedDB. An object URL
+  // over a stored blob is a handle, not a copy of the megabyte behind it.
+  async function warmMixUrls() {
+    for (const p of roster) {
+      const songs = p._songs || [];
+      const active = p._activeSongIdx || 0;
+      const pick = songs[active];
+      if (!pick) continue;
+      const url = await ensureMix(p, pick).catch(() => null);
+      if (url) p._mixUrl = url;
+    }
+    // The batter at the plate can switch songs mid-at-bat, so their alternates
+    // are opened too.
+    if (currentPlayer) {
+      const songs = currentPlayer._songs || [];
+      const active = currentPlayer._activeSongIdx || 0;
+      await Promise.all(songs.map((alt, i) =>
+        i === active ? null : ensureMix(currentPlayer, alt).catch(() => null)));
+    }
+    preloadForPlayer(currentPlayer);
+  }
+
+  // Coalesce the bursts of changes that come from editing a player's songs into
+  // one pass.
+  let mixSweepTimer = null;
+  function scheduleMixSweep() {
+    clearTimeout(mixSweepTimer);
+    mixSweepTimer = setTimeout(() => { sweepMixes(); }, 400);
+  }
+
+  // Render whatever is missing, one at a time so the interface stays responsive,
+  // then drop anything on disk that nothing refers to any more.
+  let mixSweepRunning = false;
+  async function sweepMixes() {
+    if (mixSweepRunning) return;
+    mixSweepRunning = true;
+    try {
+      const wanted = wantedMixKeys();
+      const wantedKeys = new Set(wanted.map((w) => w.key));
+
+      for (const { key, player, pick } of wanted) {
+        if (mixKnown.has(key) || mixUrlCache.has(key)) continue;
+        if (await mixDbGet(key)) { mixKnown.add(key); continue; }
+        try {
+          const blob = await renderAtBatMix(player, pick);
+          if (blob) {
+            await mixDbPut(key, blob);
+            mixKnown.add(key);
+          }
+        } catch (err) {
+          console.warn('Could not render an at-bat mix', err);
+        }
+        await new Promise((r) => setTimeout(r, 30));   // let the UI breathe
+      }
+
+      for (const key of await mixDbKeys()) {
+        if (!wantedKeys.has(key)) {
+          await mixDbDelete(key);
+          mixKnown.delete(key);
+        }
+      }
+      await warmMixUrls();
+    } finally {
+      mixSweepRunning = false;
+    }
   }
 
   // === Deezer integration ===
@@ -1965,14 +2378,6 @@
     }
   }
 
-  // The mode descriptions promise music under the announcement. When the device
-  // can't deliver that, say so here rather than letting the app quietly do
-  // something other than what the screen claims.
-  function updateDuckNote() {
-    const note = document.getElementById('duck-note');
-    if (note) note.hidden = duckingAvailable !== false;
-  }
-
   // === Settings ===
   function bindSettings() {
     const opts = document.querySelectorAll('.settings-opt');
@@ -1988,6 +2393,10 @@
         playbackMode = o.dataset.mode;
         localStorage.setItem('walkup-simple-mode', playbackMode);
         paint();
+        // The mode is part of a mix's identity — an overlap and a sequential
+        // at-bat are different recordings — so the set has to be rebuilt.
+        applySongSelections();
+        scheduleMixSweep();
         // Re-arm the timeline math for the new mode if anything is queued up.
         // We don't rip out an in-progress at-bat; the change applies to the
         // next batter that's sent up.
@@ -2341,6 +2750,31 @@
   // was causing the lock-screen play delay.
   function preloadForPlayer(player) {
     if (!player) return;
+    const pick = (player._songs || [])[player._activeSongIdx || 0];
+
+    // The rendered at-bat is the thing we want loaded. Asking for it also brings
+    // its object URL into the cache, so the next tap starts instantly.
+    if (pick) {
+      ensureMix(player, pick).then((url) => {
+        if (!url) return;
+        const stillCurrent = currentPlayer && currentPlayer.number === player.number;
+        player._mixUrl = url;
+        if (stillCurrent && !playbackPhase && !audioHasSrc(walkupAudio, url)) {
+          walkupAudio.src = url;
+        }
+      }).catch(() => {});
+      // The alternates too, so switching songs mid-game never waits on a render.
+      (player._songs || []).forEach((alt, i) => {
+        if (i !== (player._activeSongIdx || 0)) ensureMix(player, alt).catch(() => {});
+      });
+    }
+
+    if (player._mixUrl) {
+      if (!audioHasSrc(walkupAudio, player._mixUrl)) walkupAudio.src = player._mixUrl;
+      return;
+    }
+
+    // Fallback path: the two clips, loaded separately.
     if (player.announcement && !audioHasSrc(announcementAudio, player.announcement)) {
       announcementAudio.src = player.announcement;
       try { announcementAudio.load(); } catch (_) {}
@@ -2351,13 +2785,19 @@
     }
   }
 
-  function audioHasSrc(audio, relPath) {
-    if (!audio.src) return false;
+  function audioHasSrc(audio, target) {
+    if (!audio.src || !target) return false;
+    // A blob: or data: URL is already absolute and has no path to compare, so
+    // match it whole. Getting this wrong meant every play reassigned the src and
+    // the fresh load aborted the play() that followed it.
+    if (target.startsWith('blob:') || target.startsWith('data:')) {
+      return audio.src === target;
+    }
     try {
       const u = new URL(audio.src);
-      return u.pathname.endsWith(relPath);
+      return u.pathname.endsWith(target);
     } catch (_) {
-      return audio.src.endsWith(relPath);
+      return audio.src.endsWith(target);
     }
   }
 
@@ -2557,9 +2997,39 @@
     isPaused = false;
     saveCursor();
 
-    // Set src + load only if it isn't already set to this file. This avoids
-    // re-fetching the audio on every play, which on iOS is what stalls
-    // lock-screen playback for a couple of seconds.
+    // The rendered at-bat, if we have one: the announcement and the song are
+    // already mixed into it at the right levels, with the fade at the end. One
+    // element, one press of play, nothing to ride.
+    const mix = player._mixUrl || mixUrlFor(player, (player._songs || [])[player._activeSongIdx || 0]);
+    if (mix) {
+      playingMix = true;
+      playbackPhase = 'walkup';
+      player._mixUrl = mix;
+      if (audioHasSrc(walkupAudio, mix)) {
+        try { walkupAudio.currentTime = 0; } catch (_) {}
+      } else {
+        // Assigning src starts the load on its own. Calling load() as well can
+        // abort the play() below with "interrupted by a new load request".
+        walkupAudio.src = mix;
+      }
+      setWalkupLevel(MUSIC_FULL_VOL);
+      const played = walkupAudio.play();
+      if (played && played.catch) played.catch(err => console.warn('At-bat play failed', err));
+
+      acquireWakeLock();
+      stopKeepalive();
+      setPlayPauseIcon(true);
+      startProgressLoop();
+      updatePlaybackBar();
+      updateMediaSession();
+      setMediaSessionState('playing');
+      return;
+    }
+
+    playingMix = false;
+    // Fallback: two clips played against each other. Set src + load only if it
+    // isn't already set to this file — re-fetching on every play is what stalls
+    // lock-screen playback on iOS for a couple of seconds.
     if (player.walkup && !audioHasSrc(walkupAudio, player.walkup)) {
       walkupAudio.src = player.walkup;
       try { walkupAudio.load(); } catch (_) {}
@@ -2568,8 +3038,6 @@
     // on iOS this is the only moment the browser will let us take control of the
     // level (see the walk-up level section).
     resumeAudioCtx();
-    startGraphTest();
-    ensureWalkupRouting();
     setWalkupLevel(0);             // every music entry fades in (see startWalkupAudio)
     seekWalkupToStart();
 
@@ -2582,13 +3050,8 @@
       announcementAudio.volume = 1.0;
       announcementAudio.currentTime = 0;
       announcementAudio.play().then(() => {
-        if (playbackMode === 'overlap' && overlapAllowed()) {
-          // Music plays the entire time, ducked under the announcement.
-          // Soft fade-in from 0 to ducked so it doesn't cut in.
-          startWalkupAudio(duckedVol());
-        } else {
-          scheduleAnnouncementOverlap();
-        }
+        // The fallback holds the music until the name is out; the
+        // announcement's own 'ended' event brings the song in.
       }).catch(err => {
         console.warn('Announcement play failed, going straight to walk-up', err);
         startWalkup();
@@ -2606,40 +3069,12 @@
     setMediaSessionState('playing');
   }
 
-  function scheduleAnnouncementOverlap() {
-    clearTimeout(announcementOverlapTimer);
-    const tryArm = () => {
-      const dur = announcementAudio.duration;
-      if (!dur || isNaN(dur) || !isFinite(dur)) {
-        announcementOverlapTimer = setTimeout(tryArm, 120);
-        return;
-      }
-      const startMusicAt = Math.max(0, dur - effectiveOverlapS());
-      const fireIn = Math.max(0, (startMusicAt - announcementAudio.currentTime) * 1000);
-      announcementOverlapTimer = setTimeout(beginMusicOverlap, fireIn);
-    };
-    tryArm();
-  }
-
-  function beginMusicOverlap() {
-    if (playbackPhase !== 'announcement') return;
-    if (!walkupAudio.src) return;
-    // Nothing to overlap: with no level control the music waits, and the
-    // hand-off belongs to onAnnouncementEnded.
-    if (effectiveOverlapS() <= 0) return;
-    // Music starts ducked under the tail of the announcement, fading in
-    // from 0 so the entry isn't a hard cut. Announcement continues at full
-    // volume.
-    startWalkupAudio(duckedVol());
-  }
-
+  // Fallback path only: the name is out, so bring the song in.
   function onAnnouncementEnded() {
     if (playbackPhase !== 'announcement') return;
     playbackPhase = 'walkup';
-    if (walkupAudio.paused && walkupAudio.src) {
-      walkupAudio.play().catch(() => {});
-    }
-    fadeWalkup(walkupLevel || duckedVol(), fullVol(), MUSIC_RAMP_S * 1000);
+    if (walkupAudio.paused) startWalkupAudio(fullVol());
+    else fadeWalkup(walkupLevel || fullVol(), fullVol(), MUSIC_RAMP_S * 1000);
     armWalkupFadeOut();
   }
 
@@ -2669,6 +3104,7 @@
   // DEEZER_CLIP_DURATION_S (10s) because the umpires aren't going to let us
   // play a full 30-second preview.
   function currentWalkupCap() {
+    if (playingMix) return effectiveWalkupTotal();
     if (isCurrentPlayerDeezer()) return DEEZER_CLIP_DURATION_S;
     return WALKUP_DURATION_S;
   }
@@ -2681,6 +3117,7 @@
   // Where in the file the current player's clip begins. Only Deezer tracks can
   // carry a start point; a library clip is already trimmed to its ten seconds.
   function walkupStartAt() {
+    if (playingMix) return 0;      // the start point is already in the clip
     const start = activeSongStart(currentPlayer);
     if (!start) return 0;
     const d = walkupAudio.duration;
@@ -2726,15 +3163,20 @@
     if (!player) return 1;
     const pick = (player._songs || [])[player._activeSongIdx || 0];
     if (!pick) return libraryGain(player._defaultWalkup);
+    // A Deezer pick with no audio on the device isn't what's sounding — the
+    // roster default is — so use that song's gain, not this one's.
+    if (pick.src === 'deezer' && player._deezerTrack && player._deezerTrack._missing) {
+      return libraryGain(player._defaultWalkup);
+    }
+    return pickGain(pick, player);
+  }
+
+  function pickGain(pick, player) {
+    if (!pick) return 1;
     if (pick.src === 'deezer') {
-      // A Deezer pick with no audio on the device isn't what's sounding — the
-      // roster default is — so use that song's gain, not this one's.
-      if (player._deezerTrack && player._deezerTrack._missing) {
-        return libraryGain(player._defaultWalkup);
-      }
       return typeof pick.gain === 'number' ? pick.gain : UNMEASURED_SONG_GAIN;
     }
-    return libraryGain(pick.file || player._defaultWalkup);
+    return libraryGain(pick.file || (player && player._defaultWalkup));
   }
 
   function libraryGain(file) {
@@ -2744,7 +3186,8 @@
 
   // The level music sits at while the announcement is still playing, and the
   // level it ramps up to afterwards.
-  function duckedVol() { return MUSIC_DUCKED_VOL * songGain(currentPlayer); }
+  // MUSIC_DUCKED_VOL belongs to the mixer now; the fallback only ever plays the
+  // song on its own, at its measured level.
   function fullVol() { return MUSIC_FULL_VOL * songGain(currentPlayer); }
 
   // The play-through length is the lesser of the configured cap and the audio
@@ -2752,6 +3195,9 @@
   // cap at the configured ceiling and fade out before the song ends.
   function effectiveWalkupTotal() {
     const d = walkupAudio.duration;
+    // A rendered at-bat is exactly as long as it is: the cap and the start point
+    // were applied when it was made.
+    if (playingMix) return isFinite(d) && d > 0 ? d : WALKUP_DURATION_S;
     const cap = currentWalkupCap();
     // What's left of the file after the start point is what there is to play.
     if (isFinite(d) && d > 0) return Math.min(Math.max(0, d - walkupStartAt()), cap);
@@ -2771,17 +3217,19 @@
   //               clip is longer sets the bar's total. In practice the music
   //               is always longer than the announcement.
   function effectiveAtBatTotal() {
+    if (playingMix) return effectiveWalkupTotal();
     const ann = announcementTotal();
     const walkup = effectiveWalkupTotal();
     if (ann <= 0) return walkup;
-    if (playbackMode === 'overlap' && overlapAllowed()) return Math.max(ann, walkup);
+    if (playbackMode === 'overlap') return Math.max(ann, walkup);
     return ann + walkup - effectiveOverlapS();
   }
 
   // Where we are in the combined at-bat timeline. Continuous across the
   // announcement → music transition.
   function atBatElapsed() {
-    if (playbackMode === 'overlap' && overlapAllowed()) {
+    if (playingMix) return walkupAudio.currentTime || 0;
+    if (playbackMode === 'overlap') {
       // Both audios share the same t=0, so the master clock is whichever
       // is currently audible. Music is the steadier clock since it plays
       // through the entire at-bat.
@@ -2804,6 +3252,8 @@
 
   function armWalkupFadeOut() {
     clearTimeout(walkupFadeTimeout);
+    // A rendered at-bat fades itself and then fires 'ended'.
+    if (playingMix) return;
     const arm = () => {
       clearTimeout(walkupFadeTimeout);
       const total = effectiveWalkupTotal();
@@ -2838,6 +3288,7 @@
   // don't start playing. The user just taps Play again to send them up.
   function onWalkupEnded() {
     playbackPhase = null;
+    playingMix = false;
     isPaused = false;
     setPlayPauseIcon(false);
     releaseWakeLock();
@@ -2862,7 +3313,6 @@
     if (playbackPhase === 'announcement') announcementAudio.pause();
     if (!walkupAudio.paused) walkupAudio.pause();
     clearTimeout(walkupFadeTimeout);
-    clearTimeout(announcementOverlapTimer);
     isPaused = true;
     setPlayPauseIcon(false);
     stopProgressLoop();
@@ -2872,13 +3322,10 @@
 
   function resumePlayback() {
     isPaused = false;
-    // Resuming is a tap, which is the only moment iOS will let the audio graph
-    // come back up if something interrupted it.
+    // Resuming is a tap, which is when a suspended context can come back.
     resumeAudioCtx();
-    startGraphTest();
     if (playbackPhase === 'announcement') {
       announcementAudio.play().catch(() => {});
-      scheduleAnnouncementOverlap();
     } else if (playbackPhase === 'walkup') {
       walkupAudio.play().catch(() => {});
       armWalkupFadeOut();
@@ -2890,8 +3337,8 @@
   }
 
   function stopAll() {
+    playingMix = false;
     clearTimeout(walkupFadeTimeout);
-    clearTimeout(announcementOverlapTimer);
     cancelFades();
     try { announcementAudio.pause(); announcementAudio.currentTime = 0; } catch (_) {}
     try { walkupAudio.pause(); walkupAudio.currentTime = 0; } catch (_) {}
@@ -2906,199 +3353,50 @@
   }
 
   // === Walk-up level =======================================================
-  // iOS ignores HTMLMediaElement.volume: the property stores whatever you
-  // assign and reads it back, so it looks like it worked, but the output level
-  // never changes. Every duck and every fade this app performs was therefore
-  // silent on the phone it is used on — the song played at full level straight
-  // over the spoken announcement, then stopped dead at the cap instead of
-  // fading out. The first attempt at this checked whether the property
-  // round-tripped, which iOS passes, so it kept using the broken path.
+  // Almost nothing left here, on purpose. The at-bat that plays is a single
+  // rendered clip whose levels were set when it was made (see "At-bat mixes"),
+  // so there is no live mixing to do and nothing to ride.
   //
-  // So: don't ask whether the volume property works, ask whether the mechanism
-  // that replaces it does. testMediaGraph() below plays a 120 ms tone through
-  // exactly the arrangement the walk-up will use — media element into a gain
-  // node — with the gain at zero and an analyser ahead of it, and watches for
-  // the waveform. Silent to the room, and it answers the only question that
-  // matters: can this device's audio graph carry a media element?
-  //
-  //   passes -> the walk-up is routed through a gain node and levels work
-  //   fails  -> nothing is routed and music never plays under the announcement
-  //             at all, because a bed we cannot lower is a bed that buries the
-  //             kid's name
-  //
-  // Only the walk-up element is ever routed. A routed element reaches the
-  // speakers only through the graph, and iOS suspends an AudioContext while the
-  // page is backgrounded, so between-innings music, the team intro and the
-  // soundboard deliberately stay on the plain path — those are the ones that
-  // play unattended, and they must not depend on the context being awake.
-  let duckingAvailable = null;   // null until the graph has been tested
-  let graphTestPeak = 0;         // what the test saw, for walkupDebug()
-  let graphTestRuns = 0;
-  let graphTesting = false;
-
-  let walkupLevel = 1;        // the level we last asked for, 0-1
-  let walkupGain = null;      // gain node, once routed
-  let walkupSource = null;
-  let walkupAnalyser = null;  // after the gain: what is actually going out
-
-  // A 120 ms tone as a data: URI. Only ever used as a signal for the graph
-  // test — about a kilobyte, and never audible.
-  function toneDataUri() {
-    const rate = 8000;
-    const len = Math.floor(rate * 0.12);
-    const bytes = new Uint8Array(44 + len);
-    const str = (off, s) => { for (let i = 0; i < s.length; i++) bytes[off + i] = s.charCodeAt(i); };
-    const u32 = (off, v) => {
-      bytes[off] = v & 255; bytes[off + 1] = (v >> 8) & 255;
-      bytes[off + 2] = (v >> 16) & 255; bytes[off + 3] = (v >> 24) & 255;
-    };
-    const u16 = (off, v) => { bytes[off] = v & 255; bytes[off + 1] = (v >> 8) & 255; };
-    str(0, 'RIFF'); u32(4, 36 + len); str(8, 'WAVEfmt ');
-    u32(16, 16); u16(20, 1); u16(22, 1); u32(24, rate); u32(28, rate);
-    u16(32, 1); u16(34, 8); str(36, 'data'); u32(40, len);
-    for (let i = 0; i < len; i++) {
-      bytes[44 + i] = 128 + Math.round(90 * Math.sin(2 * Math.PI * 440 * i / rate));
-    }
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return 'data:audio/wav;base64,' + btoa(bin);
-  }
-
-  // Can a media element reach the speakers through a gain node on this device?
-  // Called from inside a user gesture, because that is when iOS will let an
-  // element play at all. Retried a couple of times before giving up, since an
-  // early attempt can fail for reasons that have nothing to do with support.
-  function startGraphTest() {
-    if (graphTesting || duckingAvailable === true || graphTestRuns >= 3) return;
-    const ctx = ensureAudioCtx();
-    if (!ctx || ctx.state !== 'running' || !ctx.createMediaElementSource) return;
-
-    graphTesting = true;
-    graphTestRuns += 1;
-
-    let el = null, source = null, analyser = null, gain = null;
-    const finish = (ok) => {
-      graphTesting = false;
-      duckingAvailable = ok;
-      try { if (el) { el.pause(); el.src = ''; } } catch (_) {}
-      [source, analyser, gain].forEach((n) => { try { if (n) n.disconnect(); } catch (_) {} });
-      if (ok) ensureWalkupRouting();
-      else console.warn('This device cannot carry a media element through the audio graph; ' +
-                        'music will wait for the announcement instead of playing under it');
-      updateDuckNote();
-    };
-
-    try {
-      el = new Audio(toneDataUri());
-      el.loop = true;
-      source = ctx.createMediaElementSource(el);
-      analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      gain = ctx.createGain();
-      gain.gain.value = 0;                     // silent to the room
-      source.connect(analyser).connect(gain).connect(ctx.destination);
-    } catch (err) {
-      console.warn('Audio graph test could not be set up', err);
-      finish(false);
-      return;
-    }
-
-    const buf = new Uint8Array(analyser.fftSize);
-    let tries = 0;
-    const sample = () => {
-      analyser.getByteTimeDomainData(buf);
-      let peak = 0;
-      for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
-      graphTestPeak = Math.round(peak * 1000) / 1000;
-      if (peak > 0.02) return finish(true);
-      if (++tries > 12) return finish(false);   // ~650 ms of looking
-      setTimeout(sample, 50);
-    };
-    const played = el.play();
-    if (played && played.catch) played.catch(() => finish(false));
-    setTimeout(sample, 60);
-  }
-
-  // Route the walk-up element through a gain node. Only once the graph test has
-  // passed and the context is running: routing into a graph that cannot carry
-  // the element, or into a suspended context, would mute the walk-up outright —
-  // far worse than the loudness this is here to fix.
-  function ensureWalkupRouting() {
-    if (walkupGain || duckingAvailable !== true) return walkupGain;
-    const ctx = ensureAudioCtx();
-    if (!ctx || ctx.state !== 'running') return null;
-    try {
-      walkupSource = ctx.createMediaElementSource(walkupAudio);
-      walkupGain = ctx.createGain();
-      walkupGain.gain.value = walkupLevel;
-      walkupAnalyser = ctx.createAnalyser();
-      walkupAnalyser.fftSize = 256;
-      walkupSource.connect(walkupGain).connect(walkupAnalyser).connect(ctx.destination);
-    } catch (err) {
-      console.warn('Walk-up gain routing unavailable', err);
-      walkupGain = null;
-      walkupSource = null;
-      walkupAnalyser = null;
-    }
-    return walkupGain;
-  }
-
-  // Music only plays under the announcement when its level can be controlled.
-  // Where it can't, the song waits: a bed at full volume doesn't sound like a
-  // stadium, it sounds like nobody can hear the kid's name.
-  function overlapAllowed() {
-    return duckingAvailable === true && !!walkupGain;
-  }
-
-  function effectiveOverlapS() {
-    return overlapAllowed() ? OVERLAP_S : 0;
-  }
+  // What remains serves the fallback path — two clips played one after the
+  // other, for when a mix isn't ready. That path deliberately does not duck:
+  // iOS ignores HTMLMediaElement.volume (it stores the number, hands it back,
+  // and never applies it), and a bed we cannot lower is a kid whose name nobody
+  // hears. So the fallback plays the name, then the song, and this setter is a
+  // fade helper that works where volume works and is harmless where it doesn't.
+  let walkupLevel = 1;
 
   function setWalkupLevel(v) {
     walkupLevel = clamp01(v);
-    if (walkupGain && audioCtx) {
-      try {
-        // A short approach rather than a step: an instant gain change on a
-        // signal that is already sounding clicks.
-        walkupGain.gain.setTargetAtTime(walkupLevel, audioCtx.currentTime, 0.008);
-        return;
-      } catch (_) { /* fall through to the element */ }
-    }
     walkupAudio.volume = walkupLevel;
   }
 
-  // Levels are, by their nature, invisible: on a phone there is no devtools and
-  // no way to tell a duck that worked from one that silently did nothing — which
-  // is exactly how the iOS volume problem went unnoticed for a season. This is
-  // the window into it, for a Safari console attached to the phone:
-  //
-  //   walkupDebug()  ->  { level, routed, ducking, outputPeak, ... }
-  //
-  window.walkupDebug = () => ({
-    level: Number(walkupLevel.toFixed(3)),
-    routed: !!walkupGain,
-    gainNodeValue: walkupGain ? Number(walkupGain.gain.value.toFixed(3)) : null,
-    ducking: duckingAvailable,          // null = the graph hasn't been tested yet
-    graphTestPeak,                      // what the silent test tone measured
-    graphTestRuns,
-    outputPeak: walkupOutputPeak(),     // what is leaving the gain node right now
-    overlap: overlapAllowed(),
-    ctxState: audioCtx ? audioCtx.state : 'none',
-    elementVolume: walkupAudio.volume,
-    songGain: currentPlayer ? songGain(currentPlayer) : null,
-    song: currentPlayer ? songLine(currentPlayer) : null,
-  });
+  // The fallback never plays music under the announcement, so there is no
+  // overlap to schedule.
+  function effectiveOverlapS() { return 0; }
 
-  // Peak of what the walk-up is actually putting out, or null when it isn't
-  // routed and there is nothing to look at.
-  function walkupOutputPeak() {
-    if (!walkupAnalyser) return null;
-    const buf = new Uint8Array(walkupAnalyser.fftSize);
-    walkupAnalyser.getByteTimeDomainData(buf);
-    let peak = 0;
-    for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
-    return Math.round(peak * 1000) / 1000;
-  }
+  // What actually played, for a Safari console attached to the phone:
+  //
+  //   walkupDebug()  ->  { playingMix, mixReady, mixKey, song, ... }
+  //
+  // "playingMix: true" means the at-bat came out of one rendered clip with the
+  // levels already in it. False means the fallback ran: name first, then song.
+  window.walkupDebug = () => {
+    const pick = currentPlayer
+      ? (currentPlayer._songs || [])[currentPlayer._activeSongIdx || 0]
+      : null;
+    return {
+      playingMix,
+      mixReady: !!(currentPlayer && currentPlayer._mixUrl),
+      mixKey: currentPlayer && pick ? mixKey(currentPlayer, pick) : null,
+      mixesOnDisk: mixKnown.size,
+      mixesHeldOpen: mixUrlCache.size,
+      level: Number(walkupLevel.toFixed(3)),
+      elementVolume: walkupAudio.volume,
+      songGain: currentPlayer ? songGain(currentPlayer) : null,
+      song: currentPlayer ? songLine(currentPlayer) : null,
+      mode: playbackMode,
+    };
+  };
 
   // === Fade helper ===
   // Only ever used on the walk-up, and it writes through setWalkupLevel rather
@@ -3344,20 +3642,12 @@
     if (!ctx || ctx.state === 'running') return;
     try {
       const p = ctx.resume();
-      // The moment it comes up, take control of the walk-up level — on a first
-      // tap the state often flips a beat after this call returns.
-      if (p && p.then) p.then(() => { ensureWalkupRouting(); }).catch(() => {});
+      if (p && p.catch) p.catch(() => {});
     } catch (_) {}
   }
 
   function bindAudioUnlock() {
-    const unlock = () => {
-      resumeAudioCtx();
-      // From inside the gesture, because that is when iOS will let the test's
-      // element play. On the very first tap the context is usually still coming
-      // up, so this lands on the next one — well before the first batter.
-      startGraphTest();
-    };
+    const unlock = () => resumeAudioCtx();
     // Capture phase and passive: this must not interfere with any handler, and
     // it stays attached because the context can be suspended again at any time.
     ['pointerdown', 'touchend', 'keydown'].forEach((evt) => {
