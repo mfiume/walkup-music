@@ -31,7 +31,7 @@
   <meta name="twitter:description" content="Announcements + walk-up music for every batter, every at-bat.">
   <meta name="twitter:image" content="https://mfiume.github.io/walkup-music/og-image.png?v=1">
 
-  <link rel="stylesheet" href="styles.css?v=33">
+  <link rel="stylesheet" href="styles.css?v=34">
   <style>
     /* Critical: hide non-active views even if external CSS is stale/uncached */
     .view { display: none; }
@@ -194,7 +194,7 @@
       </div>
 
       <h3 style="margin-top:28px">Songs</h3>
-      <p class="settings-desc">Tap a player to pick their walk-up song from the library. Each player has a default; switch to any other song any time.</p>
+      <p class="settings-desc">Give each player up to three walk-up songs, then switch between them here or from the full-screen player during the game.</p>
       <div id="song-options-list"></div>
     </section>
   </main>
@@ -249,6 +249,9 @@
       <div id="np-number"></div>
       <div id="np-name"></div>
       <div id="np-song-name" class="hidden"></div>
+      <!-- One chip per song the batter carries, filled in by app.js. Absent
+           for a player with a single song: there is nothing to choose. -->
+      <div id="np-song-picks" role="radiogroup" aria-label="Walk-up song"></div>
     </div>
 
     <div id="np-up-next"></div>
@@ -310,6 +313,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=50"></script>
+  <script src="app.js?v=51"></script>
 </body>
 </html>

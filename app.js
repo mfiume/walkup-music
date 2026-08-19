@@ -46,28 +46,31 @@
   // Overlap is the default — feels more like a real stadium walk-up.
   let playbackMode = localStorage.getItem('walkup-simple-mode') || 'overlap';
 
-  // Per-player song override:  { [playerNumber]: walkupFilePath }
-  // Empty / missing entry = the default in roster.json. Saved in localStorage
-  // so a coach's picks survive reloads and PWA restarts.
-  let playerSongOverrides = (() => {
-    try { return JSON.parse(localStorage.getItem('walkup-simple-songs') || '{}') || {}; }
-    catch (_) { return {}; }
+  // A player can carry up to three walk-up songs, one of which is playing.
+  // Saved as { [playerNumber]: { songs: [pick, ...], active: <index> } }, where
+  // a pick is either a library entry — { src: 'library', file } — or a Deezer
+  // track carrying everything needed to show and play it offline. A player with
+  // nothing saved has exactly one song: their default from roster.json.
+  //
+  // Three is the cap because it is what a coach can hold in their head between
+  // innings, and because the picker has to fit on a phone next to the batter's
+  // name without pushing the transport off the screen.
+  const MAX_SONGS_PER_PLAYER = 3;
+  const SONGS_KEY = 'walkup-simple-picks';
+
+  let playerSongs = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SONGS_KEY) || 'null');
+      if (saved && typeof saved === 'object') return saved;
+    } catch (_) { /* fall through to the migration */ }
+    return migrateLegacySongSelections();
   })();
 
-  // Per-player Deezer assignment:
-  //   { [playerNumber]: { trackId, title, artist, artUrl, previewUrl } }
-  // The track's MP3 preview is cached as a Blob in IndexedDB keyed by trackId,
-  // so once a player has been assigned a Deezer song the app can play it
-  // offline. Deezer wins over playerSongOverrides — if a player has a Deezer
-  // track assigned, their walk-up comes from Deezer, not the library.
-  let playerDeezerSongs = (() => {
-    try { return JSON.parse(localStorage.getItem('walkup-simple-deezer') || '{}') || {}; }
-    catch (_) { return {}; }
-  })();
-
-  // Object URLs created at runtime so we can revoke them on reassign. Map of
-  // playerNumber → blob URL.
-  const playerDeezerBlobUrls = {};
+  // Deezer previews live in IndexedDB keyed by track id; this holds the object
+  // URLs hydrated for this session. Keyed by track id and not by player,
+  // because the same track can now sit in more than one player's list — two
+  // brothers picking the same song should not mean two downloads.
+  const deezerBlobUrls = {};
 
   // Single audio element used for previewing alternates in the Settings tab,
   // separate from the walk-up / announcement / team-intro elements.
@@ -110,6 +113,7 @@
   const npNumber = document.getElementById('np-number');
   const npName = document.getElementById('np-name');
   const npSongName = document.getElementById('np-song-name');
+  const npSongPicks = document.getElementById('np-song-picks');
   const npLastUp = document.getElementById('np-last-up');
   const npUpNext = document.getElementById('np-up-next');
   const npProgressFill = document.getElementById('np-progress-fill');
@@ -181,7 +185,7 @@
     // without caring which source (library / Deezer / default) is selected.
     snapshotSongDefaults();
     try { await hydrateDeezerBlobs(); } catch (_) { /* ignore */ }
-    applySongOverrides();
+    applySongSelections();
 
     const saved = localStorage.getItem('walkup-simple-lineup');
     if (saved) {
@@ -874,11 +878,11 @@
     if (card) card.classList.toggle('has-playing', !!playing);
   }
 
-  // === Per-player song overrides ===
-  // The library (loaded from audio/simple/library.json) is the single source
-  // of truth for songs. Each library entry: { file, song }. Players have a
-  // default walkup file path in roster.json; the displayed song title is
-  // looked up from the library so roster + library can't drift.
+  // === Per-player songs ====================================================
+  // The library (loaded from audio/simple/library.json) is the single source of
+  // truth for library songs. Each entry: { file, song, artist?, explicit? }.
+  // Players have a default walkup file path in roster.json; the displayed title
+  // is looked up from the library so roster + library can't drift.
   let songLibrary = [];
 
   function findLibraryEntry(file) {
@@ -886,7 +890,7 @@
   }
 
   // Each player gets a `_defaultWalkup` / `_defaultSong` / `_defaultArtist`
-  // snapshot taken before any override is applied, so we can always show /
+  // snapshot taken before any selection is applied, so we can always show /
   // switch back to their original.
   function snapshotSongDefaults() {
     roster.forEach(p => {
@@ -901,61 +905,252 @@
     });
   }
 
-  // Read playerSongOverrides and mutate each player's walkup + song + artist
-  // fields to match the selected library entry. Invalid entries (file no
-  // longer in the library) silently fall back to the default. A Deezer
-  // assignment (if any) takes precedence and is applied on top via
-  // applyDeezerSongs.
-  function applySongOverrides() {
+  // Until this build a player had exactly one chosen song: a library file under
+  // 'walkup-simple-songs', or a Deezer track under 'walkup-simple-deezer' which
+  // took precedence over it. Carry whichever was in force across as the
+  // player's first and only song, so nobody's picks vanish on upgrade. The old
+  // keys are left where they are — they cost nothing and make a rollback to the
+  // previous build harmless.
+  function migrateLegacySongSelections() {
+    const read = (key) => {
+      try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; }
+      catch (_) { return {}; }
+    };
+    const out = {};
+    const libraryChoices = read('walkup-simple-songs');
+    Object.keys(libraryChoices).forEach((num) => {
+      const file = libraryChoices[num];
+      if (file) out[num] = { songs: [{ src: 'library', file }], active: 0 };
+    });
+    const deezerChoices = read('walkup-simple-deezer');
+    Object.keys(deezerChoices).forEach((num) => {
+      const e = deezerChoices[num];
+      if (!e || !e.trackId) return;
+      out[num] = { songs: [{ src: 'deezer', ...e }], active: 0 };
+    });
+    if (Object.keys(out).length) {
+      try { localStorage.setItem(SONGS_KEY, JSON.stringify(out)); } catch (_) {}
+    }
+    return out;
+  }
+
+  // A pick is only worth keeping if it can still be resolved: a library file
+  // that has left library.json is dead weight, and so is a Deezer entry with no
+  // track id.
+  function isUsablePick(pick, player) {
+    if (!pick) return false;
+    if (pick.src === 'deezer') return !!pick.trackId;
+    if (pick.src === 'library') {
+      return !!findLibraryEntry(pick.file) ||
+             (!!player && pick.file === player._defaultWalkup);
+    }
+    return false;
+  }
+
+  // A player's songs, validated: at least one, never more than the cap, with
+  // `active` pointing at a real entry. Unresolvable picks are dropped here
+  // rather than at save time, so an edit to library.json can't strand anyone
+  // on a song that no longer exists.
+  function songsFor(player) {
+    const saved = playerSongs[player.number];
+    const raw = Array.isArray(saved && saved.songs) ? saved.songs : [];
+    const savedActive = Number.isInteger(saved && saved.active) ? saved.active : 0;
+    const list = [];
+    let active = 0;
+    raw.slice(0, MAX_SONGS_PER_PLAYER).forEach((pick, i) => {
+      if (!isUsablePick(pick, player)) return;
+      if (i === savedActive) active = list.length;   // active follows its own song
+      list.push(pick);
+    });
+    if (!list.length) {
+      return { list: [{ src: 'library', file: player._defaultWalkup }], active: 0 };
+    }
+    return { list, active: Math.min(active, list.length - 1) };
+  }
+
+  // Everything the UI needs to say what one song is, whichever source it came
+  // from. One call, so no screen has to know about library-vs-Deezer.
+  function pickInfo(pick, player) {
+    if (pick && pick.src === 'deezer') {
+      return {
+        title: pick.title || 'Untitled',
+        artist: pick.artist || '',
+        explicit: !!pick.explicit,
+        art: pick.artUrl || '',
+        file: null,
+        deezer: true,
+      };
+    }
+    const file = (pick && pick.file) || (player && player._defaultWalkup) || '';
+    const lib = findLibraryEntry(file);
+    if (lib) {
+      return {
+        title: lib.song,
+        artist: lib.artist || '',
+        explicit: !!lib.explicit,
+        art: '',
+        file,
+        deezer: false,
+      };
+    }
+    return {
+      title: (player && player._defaultSong) || '(no title)',
+      artist: (player && player._defaultArtist) || '',
+      explicit: !!(player && player._defaultExplicit),
+      art: '',
+      file,
+      deezer: false,
+    };
+  }
+
+  function samePick(a, b) {
+    if (!a || !b || a.src !== b.src) return false;
+    return a.src === 'deezer'
+      ? String(a.trackId) === String(b.trackId)
+      : a.file === b.file;
+  }
+
+  // Materialise every player's active song onto the player object, which is
+  // what the rest of the app reads: p.walkup / p.song / p.artist / p.explicit,
+  // plus p._songs + p._activeSongIdx for the two pickers.
+  function applySongSelections() {
     roster.forEach(p => {
+      const { list, active } = songsFor(p);
+      p._songs = list;
+      p._activeSongIdx = active;
       p._deezerTrack = null;
-      const sel = playerSongOverrides[p.number];
-      if (!sel || sel === p._defaultWalkup) {
+
+      const pick = list[active];
+      const info = pickInfo(pick, p);
+
+      if (pick.src === 'deezer') {
+        const url = deezerBlobUrls[pick.trackId];
+        if (url) {
+          p.walkup = url;
+          p.song = info.title;
+          p.artist = info.artist;
+          p.explicit = info.explicit;
+          p._deezerTrack = pick;
+          return;
+        }
+        // The preview isn't on this device: a fresh install, cleared storage, or
+        // a download that failed. Play and label the roster default rather than
+        // showing a title we can't sound; the settings row offers a re-download.
         p.walkup = p._defaultWalkup;
         p.song = p._defaultSong;
         p.artist = p._defaultArtist;
         p.explicit = p._defaultExplicit;
-      } else {
-        const lib = findLibraryEntry(sel);
-        if (lib) {
-          p.walkup = lib.file;
-          p.song = lib.song;
-          p.artist = lib.artist || '';
-          p.explicit = !!lib.explicit;
-        } else {
-          p.walkup = p._defaultWalkup;
-          p.song = p._defaultSong;
-          p.artist = p._defaultArtist;
-          p.explicit = p._defaultExplicit;
-        }
+        p._deezerTrack = { ...pick, _missing: true };
+        return;
       }
+
+      p.walkup = info.file || p._defaultWalkup;
+      p.song = info.title;
+      p.artist = info.artist;
+      p.explicit = info.explicit;
     });
-    applyDeezerSongs();
   }
 
-  // For each player with a saved Deezer assignment + cached blob, set their
-  // walkup to the local object URL so the rest of the app plays it like any
-  // other clip. If the blob is missing (e.g. IDB cleared, fresh install of the
-  // PWA on a new device), we keep the library/default and surface a "redownload"
-  // affordance in the settings UI.
-  function applyDeezerSongs() {
-    roster.forEach(p => {
-      const entry = playerDeezerSongs[p.number];
-      if (!entry) return;
-      const url = playerDeezerBlobUrls[p.number];
-      if (url) {
-        p.walkup = url;
-        p.song = entry.title;
-        p.artist = entry.artist || '';
-        p.explicit = !!entry.explicit;
-        p._deezerTrack = entry;
-      } else {
-        // Marker is present but the blob hasn't been hydrated yet (or the
-        // download failed). Keep the player on their library/default song;
-        // the settings card will offer a one-tap re-fetch.
-        p._deezerTrack = { ...entry, _missing: true };
-      }
-    });
+  function saveSongs() {
+    try { localStorage.setItem(SONGS_KEY, JSON.stringify(playerSongs)); }
+    catch (_) { /* storage full / disabled — the session still works */ }
+  }
+
+  // The one way a player's songs change. Writes, re-materialises, refreshes
+  // every surface that shows a title, and — if this is the batter at the plate
+  // and the change swapped what is loaded — restarts the music on the new song.
+  function writePlayerSongs(playerNumber, list, active) {
+    const p = roster.find(x => x.number === playerNumber);
+    const before = p ? p.walkup : null;
+
+    playerSongs[playerNumber] = {
+      songs: list.slice(0, MAX_SONGS_PER_PLAYER),
+      active: Math.max(0, Math.min(active, list.length - 1)),
+    };
+    saveSongs();
+    applySongSelections();
+
+    renderSongOptionsList();
+    renderAvailable();
+    if (p && currentPlayer && currentPlayer.number === playerNumber) {
+      currentPlayer = p;
+      updatePlaybackBar();     // also re-renders lineup, roster and Now Playing
+      updateMediaSession();
+      if (!playbackPhase) preloadForPlayer(currentPlayer);
+      if (playbackPhase && p.walkup !== before) restartWalkupWithActiveSong();
+    } else {
+      renderLineup();
+      renderRoster();
+      updateNowPlaying();
+    }
+  }
+
+  // Switching songs for the batter at the plate takes effect now, not next time
+  // up: tapping another song mid-at-bat means "play this one instead". Only the
+  // music restarts — the announcement is already out of the speaker and saying
+  // the kid's name twice would be worse than a hard cut.
+  function restartWalkupWithActiveSong() {
+    if (!currentPlayer) return;
+    const wasPlaying = !walkupAudio.paused;
+    clearTimeout(walkupFadeTimeout);
+    cancelFades();
+    if (currentPlayer.walkup) {
+      walkupAudio.src = currentPlayer.walkup;
+      try { walkupAudio.load(); } catch (_) {}
+    }
+    // iOS throws InvalidStateError writing currentTime straight after load().
+    try { walkupAudio.currentTime = 0; } catch (_) {}
+    // Paused, or the announcement is still running solo in sequential mode:
+    // nothing is audible to restart, and the scheduled hand-off will pick the
+    // new file up on its own.
+    if (isPaused || !wasPlaying) return;
+    startWalkupAudio(playbackPhase === 'walkup' ? fullVol() : duckedVol());
+    if (playbackPhase === 'walkup') armWalkupFadeOut();
+  }
+
+  // Make one of a player's songs the one that plays.
+  function setActiveSong(playerNumber, idx) {
+    const p = roster.find(x => x.number === playerNumber);
+    if (!p) return;
+    const { list, active } = songsFor(p);
+    if (idx < 0 || idx >= list.length || idx === active) return;
+    writePlayerSongs(playerNumber, list, idx);
+  }
+
+  // Library rows in Settings choose a song for a player: an unheld song is
+  // added and starts playing, one they already hold is switched to. Taking a
+  // song away is deliberately not here — removal lives in one place, the X on
+  // the player's own list, so a mis-tap can never silently drop a pick.
+  function chooseLibrarySong(playerNumber, file) {
+    const p = roster.find(x => x.number === playerNumber);
+    if (!p) return;
+    const { list } = songsFor(p);
+    const pick = { src: 'library', file };
+    const at = list.findIndex(x => samePick(x, pick));
+    if (at >= 0) {
+      setActiveSong(playerNumber, at);
+      return;
+    }
+    if (list.length >= MAX_SONGS_PER_PLAYER) return;
+    const next = list.concat([pick]);
+    writePlayerSongs(playerNumber, next, next.length - 1);
+  }
+
+  function removeSongAt(playerNumber, idx) {
+    const p = roster.find(x => x.number === playerNumber);
+    if (!p) return;
+    const { list, active } = songsFor(p);
+    // Never leave a player with nothing to walk up to.
+    if (list.length <= 1 || idx < 0 || idx >= list.length) return;
+    const removed = list[idx];
+    const next = list.slice(0, idx).concat(list.slice(idx + 1));
+    // Keep playing whatever was playing; if that was the song just removed,
+    // fall to whichever song took its place in the list.
+    let nextActive = active;
+    if (idx < active) nextActive = active - 1;
+    else if (idx === active) nextActive = Math.min(active, next.length - 1);
+    writePlayerSongs(playerNumber, next, nextActive);
+    if (removed.src === 'deezer') pruneDeezerBlob(removed.trackId);
   }
 
   // Single source of truth for how we display "Title · Artist" inline. If a
@@ -968,10 +1163,16 @@
     return t || a || '';
   }
 
-  // The small "E" explicit badge markup, or '' if the player's current song
-  // isn't explicit. Works for both library songs (explicit flag in
-  // library.json) and Deezer tracks (flag carried on the saved entry); both
-  // funnel into player.explicit in apply*Songs().
+  function pickLine(info) {
+    if (!info) return '';
+    if (info.title && info.artist) return `${info.title} · ${info.artist}`;
+    return info.title || info.artist || '';
+  }
+
+  // The small "E" explicit badge markup, or '' if the song isn't explicit.
+  // Works for both library songs (explicit flag in library.json) and Deezer
+  // tracks (flag carried on the saved pick); both funnel into player.explicit
+  // in applySongSelections().
   function explicitBadgeHtml(player) {
     return (player && player.explicit) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
   }
@@ -1076,114 +1277,127 @@
     return (data && Array.isArray(data.data)) ? data.data : [];
   }
 
-  // Hydrate all saved Deezer assignments at startup: pull each cached blob out
-  // of IDB and stash an object URL we'll use as the player's walkup src.
+  // Hydrate every Deezer preview anyone refers to, deduped by track id, so a
+  // song shared by two players is one download and one object URL.
   async function hydrateDeezerBlobs() {
-    const nums = Object.keys(playerDeezerSongs).map(n => Number(n));
-    await Promise.all(nums.map(async (num) => {
-      const entry = playerDeezerSongs[num];
-      if (!entry || !entry.trackId) return;
+    const ids = new Set();
+    Object.keys(playerSongs).forEach((num) => {
+      const entry = playerSongs[num];
+      ((entry && entry.songs) || []).forEach((pick) => {
+        if (pick && pick.src === 'deezer' && pick.trackId) ids.add(String(pick.trackId));
+      });
+    });
+    await Promise.all(Array.from(ids).map(async (id) => {
       try {
-        const blob = await idbGetBlob(entry.trackId);
-        if (blob) playerDeezerBlobUrls[num] = URL.createObjectURL(blob);
-      } catch (_) { /* ignore — falls back to library/default */ }
+        const blob = await idbGetBlob(id);
+        if (blob) deezerBlobUrls[id] = URL.createObjectURL(blob);
+      } catch (_) { /* ignore — the player falls back to their default */ }
     }));
   }
 
-  // Download and persist a Deezer preview, then mark it as this player's
-  // walk-up. Old assignments (and their blobs/object URLs) are cleaned up.
-  async function assignDeezerTrackToPlayer(playerNumber, track) {
-    if (!track || !track.preview) throw new Error('Track has no preview URL');
+  // Make sure a track's preview is on the device and has an object URL. Reuses
+  // an already-downloaded blob, so re-picking a track costs nothing.
+  async function ensureDeezerBlob(trackId, previewUrl) {
+    const id = String(trackId);
+    if (deezerBlobUrls[id]) return;
+    let blob = null;
+    try { blob = await idbGetBlob(id); } catch (_) {}
+    if (!blob) {
+      const res = await fetch(previewUrl);
+      if (!res.ok) throw new Error('Failed to fetch preview');
+      blob = await res.blob();
+      await idbPutBlob(id, blob);
+    }
+    deezerBlobUrls[id] = URL.createObjectURL(blob);
+  }
 
-    // Clean up any prior assignment for this player first.
-    await clearDeezerForPlayer(playerNumber, { skipRender: true });
-
-    const res = await fetch(track.preview);
-    if (!res.ok) throw new Error('Failed to fetch preview');
-    const blob = await res.blob();
-
-    const trackId = String(track.id);
-    await idbPutBlob(trackId, blob);
-    const url = URL.createObjectURL(blob);
-    playerDeezerBlobUrls[playerNumber] = url;
-
-    const entry = {
-      trackId,
+  // Turn a Deezer search result into a pick.
+  function deezerPickFromTrack(track) {
+    return {
+      src: 'deezer',
+      trackId: String(track.id),
       title: track.title_short || track.title || 'Untitled',
       artist: (track.artist && track.artist.name) || 'Unknown',
       artUrl: (track.album && (track.album.cover_medium || track.album.cover)) || '',
       previewUrl: track.preview,
       explicit: isExplicitTrack(track),
     };
-    playerDeezerSongs[playerNumber] = entry;
-    localStorage.setItem('walkup-simple-deezer', JSON.stringify(playerDeezerSongs));
+  }
 
-    // Picking a Deezer track also clears any library override for this
-    // player so the two sources stay mutually exclusive.
-    if (playerSongOverrides[playerNumber]) {
-      delete playerSongOverrides[playerNumber];
-      localStorage.setItem('walkup-simple-songs', JSON.stringify(playerSongOverrides));
+  // Download a Deezer preview and give it to a player as one of their songs,
+  // playing straight away. A track they already hold is switched to instead of
+  // being added twice.
+  async function addDeezerSongForPlayer(playerNumber, track) {
+    if (!track || !track.preview) throw new Error('Track has no preview URL');
+    const p = roster.find(x => x.number === playerNumber);
+    if (!p) return;
+
+    const pick = deezerPickFromTrack(track);
+    const { list } = songsFor(p);
+    const at = list.findIndex(x => samePick(x, pick));
+    if (at < 0 && list.length >= MAX_SONGS_PER_PLAYER) {
+      throw new Error(`${p.firstName} already has ${MAX_SONGS_PER_PLAYER} songs — remove one first`);
     }
 
-    applySongOverrides();
+    await ensureDeezerBlob(pick.trackId, pick.previewUrl);
+    if (at >= 0) {
+      setActiveSong(playerNumber, at);
+      return;
+    }
+    const next = list.concat([pick]);
+    writePlayerSongs(playerNumber, next, next.length - 1);
+  }
+
+  // Re-fetch a preview whose blob went missing — a new device, or storage the
+  // browser evicted — without disturbing the player's list.
+  async function redownloadDeezerSong(playerNumber, pick) {
+    if (!pick || !pick.previewUrl) throw new Error('No preview URL saved');
+    await ensureDeezerBlob(pick.trackId, pick.previewUrl);
+    applySongSelections();
+    const p = roster.find(x => x.number === playerNumber);
+    renderSongOptionsList();
     renderLineup();
     renderRoster();
     renderAvailable();
-    renderSongOptionsList();
-
-    if (currentPlayer && currentPlayer.number === playerNumber) {
-      const p = roster.find(x => x.number === playerNumber);
-      if (p) {
-        currentPlayer = p;
-        updatePlaybackBar();
-        updateMediaSession();
-        if (!playbackPhase) preloadForPlayer(currentPlayer);
-      }
+    if (p && currentPlayer && currentPlayer.number === playerNumber) {
+      currentPlayer = p;
+      updatePlaybackBar();
+      updateMediaSession();
+      if (!playbackPhase) preloadForPlayer(currentPlayer);
+    } else {
+      updateNowPlaying();
     }
   }
 
-  async function clearDeezerForPlayer(playerNumber, opts = {}) {
-    const { skipRender = false } = opts;
-    // Do the synchronous bookkeeping first so any caller that fires this
-    // and then immediately calls applySongOverrides() sees the cleared state.
-    const prior = playerDeezerSongs[playerNumber];
-    const url = playerDeezerBlobUrls[playerNumber];
+  // Drop a downloaded preview once no player refers to it any more. Called
+  // after a removal, never before: a track two players share has to survive
+  // one of them dropping it.
+  async function pruneDeezerBlob(trackId) {
+    const id = String(trackId);
+    const stillUsed = Object.keys(playerSongs).some((num) => {
+      const entry = playerSongs[num];
+      return ((entry && entry.songs) || []).some(
+        (pick) => pick && pick.src === 'deezer' && String(pick.trackId) === id);
+    });
+    if (stillUsed) return;
+    const url = deezerBlobUrls[id];
     if (url) {
       try { URL.revokeObjectURL(url); } catch (_) {}
-      delete playerDeezerBlobUrls[playerNumber];
+      delete deezerBlobUrls[id];
     }
-    if (playerDeezerSongs[playerNumber]) {
-      delete playerDeezerSongs[playerNumber];
-      localStorage.setItem('walkup-simple-deezer', JSON.stringify(playerDeezerSongs));
-    }
-    // Then drop the cached blob (best-effort, runs after we've already updated
-    // in-memory state).
-    if (prior && prior.trackId) {
-      try { await idbDeleteBlob(prior.trackId); } catch (_) {}
-    }
-    if (!skipRender) {
-      applySongOverrides();
-      renderLineup();
-      renderRoster();
-      renderAvailable();
-      renderSongOptionsList();
-      if (currentPlayer && currentPlayer.number === playerNumber) {
-        const p = roster.find(x => x.number === playerNumber);
-        if (p) {
-          currentPlayer = p;
-          updatePlaybackBar();
-          updateMediaSession();
-          if (!playbackPhase) preloadForPlayer(currentPlayer);
-        }
-      }
-    }
+    try { await idbDeleteBlob(id); } catch (_) {}
   }
 
-  // Per-player accordion: each player gets a <details> row. Collapsed shows
-  // #N, name, and the current song (default or selected). Expanded reveals
-  // the full song library; tapping a library entry assigns it to the player.
-  // Library entries that are someone else's default get a small "Adrian's"
-  // tag so the coach knows where the song came from.
+  // Per-player accordion. Collapsed: #N, name, the song that is playing, and a
+  // dot per song they hold so the count is legible without opening anything.
+  // Expanded, top to bottom: the player's own songs (which one plays, and the
+  // only place a song can be removed), then the ways to add another — Deezer
+  // search, then the library.
+  //
+  // Two questions, two places to answer them. "Which of their songs plays?" is
+  // answered in their own list; "which songs do they have?" is answered by
+  // tapping the library. Mixing the two into one tap is how a coach ends up
+  // deleting a song they meant to switch to.
   function renderSongOptionsList() {
     const host = document.getElementById('song-options-list');
     if (!host) return;
@@ -1204,6 +1418,10 @@
     }
 
     players.forEach(p => {
+      const { list, active } = songsFor(p);
+      const isFull = list.length >= MAX_SONGS_PER_PLAYER;
+      const isCustom = !samePick(list[active], { src: 'library', file: p._defaultWalkup });
+
       const card = document.createElement('details');
       card.className = 'song-player-card';
       card.dataset.pnum = String(p.number);
@@ -1211,19 +1429,16 @@
 
       const summary = document.createElement('summary');
       summary.className = 'song-player-head';
-      const dz = playerDeezerSongs[p.number];
-      const isCustom = (!dz && playerSongOverrides[p.number] && playerSongOverrides[p.number] !== p._defaultWalkup) || !!dz;
-      const currentLabel = songLine(p)
-        ? songLabelHtml(p)
-        : escapeHtml(p._defaultSong || '(no song)');
+      const dots = list
+        .map((_, i) => `<i class="${i === active ? 'on' : ''}"></i>`)
+        .join('');
       summary.innerHTML = `
         <span class="lineup-num">#${p.number}</span>
         <span class="song-player-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</span>
         <span class="song-player-current ${isCustom ? 'is-custom' : ''}">
-          ${dz ? '<span class="song-player-deezer-chip" title="From Deezer">DZ</span>' : ''}
-          ${currentLabel}
-          ${isCustom ? '<span class="song-player-customdot" title="Custom selection"></span>' : ''}
+          ${songLabelHtml(p) || escapeHtml(p._defaultSong || '(no song)')}
         </span>
+        <span class="song-player-dots" aria-label="${list.length} song${list.length === 1 ? '' : 's'}">${dots}</span>
         <span class="song-player-caret" aria-hidden="true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </span>
@@ -1233,90 +1448,138 @@
       const opts = document.createElement('div');
       opts.className = 'song-opts';
 
-      // === Deezer row(s) ===
-      // Always show a "Search Deezer" entry. If this player already has a
-      // Deezer track assigned, show it as the active row above the library
-      // with a Remove affordance.
-      if (dz) {
-        const dzRow = document.createElement('div');
-        dzRow.className = 'song-opt song-opt-deezer active';
-        dzRow.setAttribute('role', 'radio');
-        dzRow.setAttribute('aria-checked', 'true');
-        dzRow.innerHTML = `
-          <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(dz.title)}">
+      opts.appendChild(dividerRow(
+        `${p.firstName}'s songs`,
+        `${list.length} of ${MAX_SONGS_PER_PLAYER}`
+      ));
+
+      // === The player's own songs — tap to switch, X to remove ===
+      list.forEach((pick, i) => {
+        const info = pickInfo(pick, p);
+        const isActive = i === active;
+        const missing = pick.src === 'deezer' && !deezerBlobUrls[pick.trackId];
+
+        const row = document.createElement('div');
+        row.className = 'song-opt song-pick' + (isActive ? ' active' : '') +
+                        (missing ? ' is-missing' : '');
+        row.setAttribute('role', 'radio');
+        row.setAttribute('aria-checked', isActive ? 'true' : 'false');
+        row.innerHTML = `
+          <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(info.title)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
           </button>
-          ${dz.artUrl ? `<img class="song-opt-art" src="${escapeHtml(dz.artUrl)}" alt="" loading="lazy">` : ''}
+          ${info.art ? `<img class="song-opt-art" src="${escapeHtml(info.art)}" alt="" loading="lazy">` : ''}
           <span class="song-opt-title">
-            <span class="song-opt-title-line">${dz.explicit ? '<span class="explicit-badge" title="Explicit">E</span>' : ''}${escapeHtml(dz.title)}</span>
-            <span class="song-opt-sub">${escapeHtml(dz.artist)}</span>
+            <span class="song-opt-title-line">${info.explicit ? '<span class="explicit-badge" title="Explicit">E</span>' : ''}${escapeHtml(info.title)}</span>
+            <span class="song-opt-sub">${escapeHtml(missing ? 'Not on this device — tap to download' : info.artist)}</span>
           </span>
-          <span class="song-opt-tag">Deezer</span>
-          <button class="song-opt-remove" type="button" aria-label="Remove Deezer song" title="Remove">
+          ${info.deezer ? '<span class="song-opt-tag">Deezer</span>' : ''}
+          ${isActive && !missing ? '<span class="song-opt-tag playing-tag">Playing</span>' : ''}
+          <span class="song-opt-check" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          ${list.length > 1 ? `<button class="song-opt-remove" type="button" aria-label="Remove ${escapeHtml(info.title)} from ${escapeHtml(p.firstName)}'s songs" title="Remove">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          </button>` : ''}
         `;
-        const dzPreviewBtn = dzRow.querySelector('.song-opt-preview');
-        const dzPreviewSrc = playerDeezerBlobUrls[p.number] || dz.previewUrl;
-        dzPreviewBtn.addEventListener('click', (e) => {
+
+        const previewBtn = row.querySelector('.song-opt-preview');
+        previewBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          togglePreview(dzPreviewSrc, dzPreviewBtn);
+          if (missing) {
+            redownloadDeezerSong(p.number, pick)
+              .catch(err => console.warn('Redownload failed', err));
+            return;
+          }
+          const src = pick.src === 'deezer'
+            ? (deezerBlobUrls[pick.trackId] || pick.previewUrl)
+            : info.file;
+          togglePreview(src, previewBtn);
         });
-        dzRow.querySelector('.song-opt-remove').addEventListener('click', async (e) => {
-          e.stopPropagation();
-          try { await clearDeezerForPlayer(p.number); }
-          catch (err) { console.warn('Clear Deezer failed', err); }
+
+        const removeBtn = row.querySelector('.song-opt-remove');
+        if (removeBtn) {
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeSongAt(p.number, i);
+          });
+        }
+
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.song-opt-preview') || e.target.closest('.song-opt-remove')) return;
+          if (missing) {
+            redownloadDeezerSong(p.number, pick)
+              .catch(err => console.warn('Redownload failed', err));
+            return;
+          }
+          setActiveSong(p.number, i);
         });
-        opts.appendChild(dzRow);
+
+        opts.appendChild(row);
+      });
+
+      // === Ways to add another ===
+      opts.appendChild(dividerRow('Add a song'));
+
+      if (isFull) {
+        const note = document.createElement('div');
+        note.className = 'song-opt-note';
+        note.textContent = `${MAX_SONGS_PER_PLAYER} is the limit. Remove one above to add another.`;
+        opts.appendChild(note);
       }
 
       const searchRow = document.createElement('div');
-      searchRow.className = 'song-opt song-opt-deezer-search';
+      searchRow.className = 'song-opt song-opt-deezer-search' + (isFull ? ' is-disabled' : '');
       searchRow.setAttribute('role', 'button');
+      if (isFull) searchRow.setAttribute('aria-disabled', 'true');
       searchRow.innerHTML = `
         <span class="song-opt-deezer-icon" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>
         </span>
-        <span class="song-opt-title">${dz ? 'Change Deezer song…' : 'Search Deezer…'}</span>
+        <span class="song-opt-title">Search Deezer…</span>
         <span class="song-opt-tag muted">Online</span>
       `;
-      searchRow.addEventListener('click', () => openDeezerModal(p));
+      if (!isFull) searchRow.addEventListener('click', () => openDeezerModal(p));
       opts.appendChild(searchRow);
 
-      // Visual divider between Deezer + library
-      const divider = document.createElement('div');
-      divider.className = 'song-opts-divider';
-      divider.innerHTML = '<span>Library</span>';
-      opts.appendChild(divider);
+      opts.appendChild(dividerRow('Library'));
 
       songLibrary.forEach(lib => {
-        const isActive = p.walkup === lib.file;
-        // 'Default' tag shows only on this player's own default song,
-        // so they can see which one switches back. We don't attribute
-        // any song to other players — every song is just a library entry.
+        const pick = { src: 'library', file: lib.file };
+        const at = list.findIndex(x => samePick(x, pick));
+        const held = at >= 0;
+        const isActive = held && at === active;
+        // 'Default' tag shows only on this player's own default song, so they
+        // can see which one switches back. We don't attribute any song to other
+        // players — every song is just a library entry.
         const isOwnDefault = lib.file === p._defaultWalkup;
+        const blocked = !held && isFull;
 
         const row = document.createElement('div');
-        row.className = 'song-opt' + (isActive ? ' active' : '');
+        row.className = 'song-opt' +
+                        (isActive ? ' active' : '') +
+                        (held && !isActive ? ' in-list' : '') +
+                        (blocked ? ' is-disabled' : '');
         row.setAttribute('role', 'radio');
         row.setAttribute('aria-checked', isActive ? 'true' : 'false');
+        if (blocked) row.setAttribute('aria-disabled', 'true');
         row.dataset.pnum = String(p.number);
         row.dataset.file = lib.file;
 
-        const tagHtml = isOwnDefault ? '<span class="song-opt-tag">Default</span>' : '';
-        const artistHtml = lib.artist
-          ? `<span class="song-opt-sub">${escapeHtml(lib.artist)}</span>`
-          : '';
+        const tags = [];
+        if (isOwnDefault) tags.push('<span class="song-opt-tag">Default</span>');
+        if (isActive) tags.push('<span class="song-opt-tag playing-tag">Playing</span>');
+        else if (held) tags.push('<span class="song-opt-tag held-tag">Added</span>');
 
         row.innerHTML = `
           <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(lib.song)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
           </button>
           <span class="song-opt-title">
-            <span class="song-opt-title-line">${escapeHtml(lib.song)}</span>
-            ${artistHtml}
+            <span class="song-opt-title-line">${lib.explicit ? '<span class="explicit-badge" title="Explicit">E</span>' : ''}${escapeHtml(lib.song)}</span>
+            ${lib.artist ? `<span class="song-opt-sub">${escapeHtml(lib.artist)}</span>` : ''}
           </span>
-          ${tagHtml}
+          ${tags.join('')}
           <span class="song-opt-check" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </span>
@@ -1324,7 +1587,8 @@
 
         row.addEventListener('click', (e) => {
           if (e.target.closest('.song-opt-preview')) return;
-          selectSongForPlayer(p.number, lib.file);
+          if (blocked) return;
+          chooseLibrarySong(p.number, lib.file);
         });
 
         const previewBtn = row.querySelector('.song-opt-preview');
@@ -1335,42 +1599,20 @@
 
         opts.appendChild(row);
       });
+
       card.appendChild(opts);
       host.appendChild(card);
     });
   }
 
-  function selectSongForPlayer(playerNumber, file) {
-    const p = roster.find(x => x.number === playerNumber);
-    if (!p) return;
-    // Picking a library entry also clears any Deezer assignment so the
-    // two sources stay mutually exclusive. Fire-and-forget — the local
-    // state is updated synchronously below.
-    if (playerDeezerSongs[playerNumber]) {
-      clearDeezerForPlayer(playerNumber, { skipRender: true }).catch(() => {});
-    }
-    if (file === p._defaultWalkup) {
-      delete playerSongOverrides[playerNumber];
-    } else {
-      playerSongOverrides[playerNumber] = file;
-    }
-    localStorage.setItem('walkup-simple-songs', JSON.stringify(playerSongOverrides));
-    applySongOverrides();
-
-    // Re-render lineup / roster so song titles update wherever they appear.
-    renderLineup();
-    renderRoster();
-    renderAvailable();
-    renderSongOptionsList();
-
-    // If this player is currently queued up or playing, refresh the bar +
-    // the preloaded audio so a future Play picks up the new file.
-    if (currentPlayer && currentPlayer.number === playerNumber) {
-      currentPlayer = p;
-      updatePlaybackBar();
-      updateMediaSession();
-      if (!playbackPhase) preloadForPlayer(currentPlayer);
-    }
+  // Small labelled rule between groups of rows, with an optional count on the
+  // right ("2 of 3").
+  function dividerRow(label, right) {
+    const div = document.createElement('div');
+    div.className = 'song-opts-divider';
+    div.innerHTML = `<span>${escapeHtml(label)}</span>` +
+      (right ? `<span class="song-opts-count">${escapeHtml(right)}</span>` : '');
+    return div;
   }
 
   function togglePreview(file, btn) {
@@ -1421,7 +1663,12 @@
     const input = document.getElementById('deezer-search-input');
     const results = document.getElementById('deezer-results');
     if (!modal || !input || !results) return;
-    if (label) label.textContent = `For #${player.number} ${player.firstName} ${player.lastName}`;
+    if (label) {
+      const held = songsFor(player).list.length;
+      label.textContent =
+        `For #${player.number} ${player.firstName} ${player.lastName} · ` +
+        `${held} of ${MAX_SONGS_PER_PLAYER} songs`;
+    }
     input.value = '';
     results.innerHTML = navigator.onLine
       ? '<div class="deezer-empty">Search for any song or artist above.</div>'
@@ -1487,7 +1734,7 @@
           <span class="deezer-result-title">${explicitHtml}${escapeHtml(t.title_short || t.title || '')}</span>
           <span class="deezer-result-artist">${escapeHtml((t.artist && t.artist.name) || '')}</span>
         </span>
-        <button class="deezer-result-use" type="button">Use</button>
+        <button class="deezer-result-use" type="button">Add</button>
       `;
       row.querySelector('.deezer-result-play').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1500,7 +1747,7 @@
         useBtn.disabled = true;
         useBtn.textContent = 'Saving…';
         try {
-          await assignDeezerTrackToPlayer(deezerModalPlayer.number, t);
+          await addDeezerSongForPlayer(deezerModalPlayer.number, t);
           closeDeezerModal();
         } catch (err) {
           console.warn('Deezer assign failed', err);
@@ -1982,6 +2229,7 @@
       npNumber.textContent = '';
       npName.textContent = 'No player selected';
       npSongName.classList.add('hidden');
+      npSongPicks.innerHTML = '';
       npLastUp.innerHTML = '';
       npUpNext.innerHTML = '';
       npProgressFill.style.width = '0%';
@@ -2015,6 +2263,7 @@
     } else {
       npSongName.classList.add('hidden');
     }
+    renderNpSongPicks();
 
     npPlayPauseBtn.disabled = false;
     // Order wraps, so prev/next are usable whenever there's more than one batter.
@@ -2053,6 +2302,54 @@
         if (p) npUpNext.appendChild(makeUpNextRow('In The Hole', p));
       }
     }
+  }
+
+  // The batter's songs as chips under their name: the one playing is filled,
+  // a tap switches. Each chip carries its own title rather than a number,
+  // because "which song is that?" has to be answerable at arm's length in the
+  // middle of an inning — and the full "Title · Artist" of whichever is chosen
+  // sits directly above.
+  //
+  // A player with one song gets no chips at all. There is nothing to choose,
+  // and an empty rail would only push the batter's name up the screen.
+  function renderNpSongPicks() {
+    if (!npSongPicks) return;
+    npSongPicks.innerHTML = '';
+    if (!currentPlayer) return;
+    const songs = currentPlayer._songs || [];
+    if (songs.length < 2) return;
+
+    const active = currentPlayer._activeSongIdx || 0;
+    const player = currentPlayer;
+    songs.forEach((pick, i) => {
+      const info = pickInfo(pick, player);
+      // A Deezer song whose preview isn't on this device is drawn hollow rather
+      // than filled: it is the chosen song but not the one coming out of the
+      // speaker, and a filled chip would say otherwise. Tapping it fetches it.
+      const missing = pick.src === 'deezer' && !deezerBlobUrls[pick.trackId];
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'np-song-chip' +
+                       (i === active ? ' active' : '') +
+                       (missing ? ' needs-download' : '');
+      chip.dataset.idx = String(i);
+      chip.setAttribute('role', 'radio');
+      chip.setAttribute('aria-checked', i === active && !missing ? 'true' : 'false');
+      // The visible label is the title alone; the artist goes in the accessible
+      // name, where there is room for it.
+      chip.setAttribute('aria-label',
+        (pickLine(info) || info.title) + (missing ? ' — not downloaded, tap to get it' : ''));
+      chip.innerHTML = `<span class="np-song-chip-title">${escapeHtml(info.title)}</span>`;
+      chip.addEventListener('click', () => {
+        if (missing) {
+          redownloadDeezerSong(player.number, pick)
+            .catch(err => console.warn('Redownload failed', err));
+          return;
+        }
+        setActiveSong(player.number, i);
+      });
+      npSongPicks.appendChild(chip);
+    });
   }
 
   // `variant` styles a row that isn't part of what's coming up — 'past' dims

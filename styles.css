@@ -708,6 +708,59 @@ h3 {
 }
 #np-song-name.hidden { display: none; }
 
+/* The batter's songs. Sits directly under the song line so the chip you tap
+   and the full title that results are read in one glance. Equal widths, so a
+   long title truncates rather than starving its neighbours; the row disappears
+   entirely for a player with one song. */
+#np-song-picks {
+  margin-top: 14px;
+  width: 100%;
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+}
+#np-song-picks:empty { display: none; }
+
+.np-song-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 170px;
+  padding: 9px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
+}
+.np-song-chip-title {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.np-song-chip:hover {
+  color: var(--text);
+  border-color: rgba(var(--accent-rgb), 0.45);
+}
+.np-song-chip:active { transform: scale(0.96); }
+.np-song-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--green);
+  font-weight: 800;
+}
+/* Chosen, but its audio isn't on this device: gold outline instead of gold
+   fill, because something else is what the speaker is actually playing. */
+.np-song-chip.active.needs-download {
+  background: transparent;
+  border-color: var(--accent);
+  border-style: dashed;
+  color: var(--accent);
+}
+
 #np-up-next {
   margin-top: 18px;
   width: 100%;
@@ -1056,6 +1109,23 @@ h3 {
   gap: 6px;
 }
 .song-player-current.is-custom { color: var(--accent); }
+/* One dot per song the player holds, the filled one being what plays. Says
+   "there are others" at a glance, with no words and no room taken. */
+.song-player-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+.song-player-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+}
+.song-player-dots i.on { background: var(--accent); }
+
 .song-player-customdot {
   width: 6px;
   height: 6px;
@@ -1124,6 +1194,43 @@ h3 {
   border: 1px solid rgba(var(--accent-rgb), 0.35);
   flex-shrink: 0;
 }
+/* The player's own songs: same row as a library entry, held slightly forward
+   so the group reads as theirs rather than as more of the list below. */
+.song-opt.song-pick {
+  background: rgba(255, 255, 255, 0.02);
+}
+.song-opt.song-pick.active {
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.05));
+}
+.song-opt.is-missing .song-opt-title-line { color: var(--muted); }
+
+/* "Playing" on the one that plays; "Added" on a library song they hold but
+   aren't using. Different weights on purpose — one is state, one is stock. */
+.song-opt-tag.playing-tag {
+  background: var(--accent);
+  color: var(--green);
+  border-color: var(--accent);
+}
+.song-opt-tag.held-tag {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: var(--accent-soft);
+}
+
+/* At the cap: rows that would add a fourth song stop responding, rather than
+   disappearing and leaving the coach hunting for a song that was there a
+   moment ago. */
+.song-opt.is-disabled {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
+.song-opt-note {
+  padding: 9px 14px 11px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .song-opt-tag.muted {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.04);
@@ -1145,6 +1252,11 @@ h3 {
   color: transparent;
   flex-shrink: 0;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.song-opt.in-list .song-opt-check {
+  opacity: 1;
+  border-color: rgba(var(--accent-rgb), 0.5);
+  color: rgba(var(--accent-rgb), 0.9);
 }
 .song-opt.active .song-opt-check {
   background: var(--accent);
@@ -1289,6 +1401,10 @@ body.is-offline .song-opt.song-opt-deezer-search { opacity: 0.5; }
   height: 1px;
   background: var(--border);
 }
+/* A divider carrying a count reads left to right — "ADRIAN'S SONGS ——— 2 OF 3"
+   — so it drops the leading rule and lets the trailing one do the spacing. */
+.song-opts-divider:has(.song-opts-count)::before { display: none; }
+.song-opts-count { flex-shrink: 0; }
 
 /* === Deezer search modal === */
 #deezer-modal {
