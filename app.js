@@ -18,17 +18,29 @@
   const FADE_IN_S = 0.3;            // soft fade-in when music starts (never cuts)
   const FADE_OUT_S = 1.5;           // soft fade-out at the end of any clip
   const OVERLAP_S = 1.2;            // start music this many seconds before announcement ends
-  const MUSIC_DUCKED_VOL = 0.35;    // library-clip volume while announcement still playing
-  // Deezer previews are commercially mastered (much hotter RMS than our
-  // hand-trimmed library clips), so the same ducking multiplier sounds far
-  // louder under the announcement. The announcement is already at max
-  // volume, so the only lever is the music: duck Deezer tracks way down
-  // under the talk track, and hold their full level a bit below 1.0 too.
-  // (HTMLMediaElement volume is linear amplitude — 0.07 ≈ -23 dB.)
-  const DEEZER_DUCKED_VOL = 0.07;
-  const DEEZER_FULL_VOL = 0.8;
+
+  // Every song carries a measured gain that brings it to one shared level:
+  // library clips get theirs from library.json (scripts/measure_song_gain.py),
+  // Deezer previews are measured in the browser when they're downloaded. Before
+  // that, these two multipliers meant something different for every song — the
+  // library alone spans 13 dB — so ducking was a guess per player. Now they mean
+  // the same thing for everyone: full level, and the level music sits at while
+  // the announcement is still talking.
   const MUSIC_FULL_VOL = 1.0;
+  // ≈ -14 dB under the song's own full level. Set from measurement, not taste:
+  // the announcements run -16 to -19 dB mean and songs sit at -14 dB after their
+  // gain, so this puts the bed around -28 dB and leaves the spoken name about
+  // 12 dB clear of it — a broadcast-ish ratio. The old -9 dB left only 6 dB,
+  // which is muddy even when the ducking works. This is the one number to change
+  // if music should sit further under the voice, or closer to it.
+  const MUSIC_DUCKED_VOL = 0.2;
   const MUSIC_RAMP_S = 0.9;         // ramp from ducked → full once announcement ends
+  // Where the measured gains aim. Keep in step with scripts/measure_song_gain.py.
+  const TARGET_MEAN_DBFS = -14;
+  // A Deezer track saved before gains existed, or one whose measurement failed.
+  // Modern masters run hot — around -8 dB mean — so assume that rather than
+  // letting an unmeasured track play at full level over the announcement.
+  const UNMEASURED_SONG_GAIN = 0.5;
 
   // === State ===
   let roster = [];
@@ -219,6 +231,7 @@
     bindTeamIntro();
     bindMediaSession();
     bindDeezerModal();
+    bindAudioUnlock();
 
     // Restore the lineup cursor so a hard refresh returns to whoever was Up
     // Next / batting, not the leadoff hitter. Falls back to 0 if the saved
@@ -1290,16 +1303,18 @@
     await Promise.all(Array.from(ids).map(async (id) => {
       try {
         const blob = await idbGetBlob(id);
-        if (blob) deezerBlobUrls[id] = URL.createObjectURL(blob);
+        if (!blob) return;
+        deezerBlobUrls[id] = URL.createObjectURL(blob);
+        await backfillDeezerGain(id, blob);
       } catch (_) { /* ignore — the player falls back to their default */ }
     }));
   }
 
-  // Make sure a track's preview is on the device and has an object URL. Reuses
-  // an already-downloaded blob, so re-picking a track costs nothing.
+  // Make sure a track's preview is on the device and has an object URL, and hand
+  // the blob back so its level can be measured. Reuses an already-downloaded
+  // blob, so re-picking a track costs nothing.
   async function ensureDeezerBlob(trackId, previewUrl) {
     const id = String(trackId);
-    if (deezerBlobUrls[id]) return;
     let blob = null;
     try { blob = await idbGetBlob(id); } catch (_) {}
     if (!blob) {
@@ -1308,7 +1323,63 @@
       blob = await res.blob();
       await idbPutBlob(id, blob);
     }
-    deezerBlobUrls[id] = URL.createObjectURL(blob);
+    if (!deezerBlobUrls[id]) deezerBlobUrls[id] = URL.createObjectURL(blob);
+    return blob;
+  }
+
+  // Measure a downloaded clip so it plays at the same level as everything else.
+  // Same method as scripts/measure_song_gain.py: RMS across what we actually
+  // play, then the attenuation that brings it to the shared target. Never boosts
+  // — commercial masters peak within a dB of full scale, so a boost would clip.
+  async function measureClipGain(blob, seconds) {
+    const ctx = ensureAudioCtx();
+    if (!ctx || !ctx.decodeAudioData) return null;
+    try {
+      const bytes = await blob.arrayBuffer();
+      const audio = await ctx.decodeAudioData(bytes);
+      const frames = seconds
+        ? Math.min(audio.length, Math.floor(audio.sampleRate * seconds))
+        : audio.length;
+      if (!frames) return null;
+      let sum = 0;
+      let counted = 0;
+      for (let ch = 0; ch < audio.numberOfChannels; ch++) {
+        const data = audio.getChannelData(ch);
+        for (let i = 0; i < frames; i++) sum += data[i] * data[i];
+        counted += frames;
+      }
+      const rms = Math.sqrt(sum / Math.max(1, counted));
+      if (!(rms > 0)) return null;
+      const meanDb = 20 * Math.log10(rms);
+      const gain = Math.min(1, Math.pow(10, (TARGET_MEAN_DBFS - meanDb) / 20));
+      return Math.round(gain * 1000) / 1000;
+    } catch (err) {
+      // Falls back to UNMEASURED_SONG_GAIN, which assumes a hot master.
+      console.warn('Could not measure clip level', err);
+      return null;
+    }
+  }
+
+  // A track saved before levels were measured gets measured on the next start,
+  // so an existing pick quietly comes into line instead of staying twice as loud
+  // as everything else.
+  async function backfillDeezerGain(trackId, blob) {
+    const id = String(trackId);
+    const unmeasured = [];
+    Object.keys(playerSongs).forEach((num) => {
+      const entry = playerSongs[num];
+      ((entry && entry.songs) || []).forEach((pick) => {
+        if (pick && pick.src === 'deezer' && String(pick.trackId) === id &&
+            typeof pick.gain !== 'number') {
+          unmeasured.push(pick);
+        }
+      });
+    });
+    if (!unmeasured.length) return;
+    const gain = await measureClipGain(blob, DEEZER_CLIP_DURATION_S);
+    if (gain == null) return;
+    unmeasured.forEach((pick) => { pick.gain = gain; });
+    saveSongs();
   }
 
   // Turn a Deezer search result into a pick.
@@ -1339,7 +1410,11 @@
       throw new Error(`${p.firstName} already has ${MAX_SONGS_PER_PLAYER} songs — remove one first`);
     }
 
-    await ensureDeezerBlob(pick.trackId, pick.previewUrl);
+    const blob = await ensureDeezerBlob(pick.trackId, pick.previewUrl);
+    // Measure before saving, so the very first play is already at the right
+    // level relative to the announcement.
+    const gain = await measureClipGain(blob, DEEZER_CLIP_DURATION_S);
+    if (gain != null) pick.gain = gain;
     if (at >= 0) {
       setActiveSong(playerNumber, at);
       return;
@@ -1352,7 +1427,8 @@
   // browser evicted — without disturbing the player's list.
   async function redownloadDeezerSong(playerNumber, pick) {
     if (!pick || !pick.previewUrl) throw new Error('No preview URL saved');
-    await ensureDeezerBlob(pick.trackId, pick.previewUrl);
+    const blob = await ensureDeezerBlob(pick.trackId, pick.previewUrl);
+    await backfillDeezerGain(pick.trackId, blob);
     applySongSelections();
     const p = roster.find(x => x.number === playerNumber);
     renderSongOptionsList();
@@ -2402,7 +2478,12 @@
       walkupAudio.src = player.walkup;
       try { walkupAudio.load(); } catch (_) {}
     }
-    walkupAudio.volume = 0;        // every music entry fades in (see startWalkupAudio)
+    // Unlock / route the audio graph from inside the tap that starts playback:
+    // on iOS this is the only moment the browser will let us take control of the
+    // level (see the walk-up level section).
+    resumeAudioCtx();
+    ensureWalkupRouting();
+    setWalkupLevel(0);             // every music entry fades in (see startWalkupAudio)
     walkupAudio.currentTime = 0;
 
     if (player.announcement) {
@@ -2468,7 +2549,7 @@
     if (walkupAudio.paused && walkupAudio.src) {
       walkupAudio.play().catch(() => {});
     }
-    fade(walkupAudio, walkupAudio.volume || duckedVol(), fullVol(), MUSIC_RAMP_S * 1000);
+    fadeWalkup(walkupLevel || duckedVol(), fullVol(), MUSIC_RAMP_S * 1000);
     armWalkupFadeOut();
   }
 
@@ -2486,12 +2567,12 @@
   function startWalkupAudio(targetVol) {
     // Cancel any in-flight volume ramp so we always start from 0 cleanly.
     cancelFades();
-    walkupAudio.volume = 0;
+    setWalkupLevel(0);
     const p = walkupAudio.play();
     if (p && p.catch) p.catch((err) => {
       console.warn('Walk-up play failed', err);
     });
-    fade(walkupAudio, 0, targetVol, FADE_IN_S * 1000);
+    fadeWalkup(0, targetVol, FADE_IN_S * 1000);
   }
 
   // Cap for the current player's walk-up. Deezer-sourced clips are held to
@@ -2507,11 +2588,33 @@
     return !!(currentPlayer && currentPlayer._deezerTrack && !currentPlayer._deezerTrack._missing);
   }
 
-  // Volume the music sits at while the announcement is still playing, and the
-  // level it ramps up to afterwards. Deezer previews are mastered hot, so they
-  // get ducked harder and held a bit below full.
-  function duckedVol() { return isCurrentPlayerDeezer() ? DEEZER_DUCKED_VOL : MUSIC_DUCKED_VOL; }
-  function fullVol() { return isCurrentPlayerDeezer() ? DEEZER_FULL_VOL : MUSIC_FULL_VOL; }
+  // The measured level of the current player's song, 0-1. This is what makes
+  // one ducking multiplier work for a hand-trimmed library clip and a
+  // commercial master alike.
+  function songGain(player) {
+    if (!player) return 1;
+    const pick = (player._songs || [])[player._activeSongIdx || 0];
+    if (!pick) return libraryGain(player._defaultWalkup);
+    if (pick.src === 'deezer') {
+      // A Deezer pick with no audio on the device isn't what's sounding — the
+      // roster default is — so use that song's gain, not this one's.
+      if (player._deezerTrack && player._deezerTrack._missing) {
+        return libraryGain(player._defaultWalkup);
+      }
+      return typeof pick.gain === 'number' ? pick.gain : UNMEASURED_SONG_GAIN;
+    }
+    return libraryGain(pick.file || player._defaultWalkup);
+  }
+
+  function libraryGain(file) {
+    const lib = findLibraryEntry(file);
+    return (lib && typeof lib.gain === 'number') ? lib.gain : 1;
+  }
+
+  // The level music sits at while the announcement is still playing, and the
+  // level it ramps up to afterwards.
+  function duckedVol() { return MUSIC_DUCKED_VOL * songGain(currentPlayer); }
+  function fullVol() { return MUSIC_FULL_VOL * songGain(currentPlayer); }
 
   // The play-through length is the lesser of the configured cap and the audio
   // file's natural duration. For ~10s clips, total = ~10s; for longer songs we
@@ -2582,7 +2685,7 @@
         (total - FADE_OUT_S - walkupAudio.currentTime) * 1000
       );
       walkupFadeTimeout = setTimeout(() => {
-        fade(walkupAudio, walkupAudio.volume, 0, FADE_OUT_S * 1000, () => {
+        fadeWalkup(walkupLevel, 0, FADE_OUT_S * 1000, () => {
           walkupAudio.pause();
           onWalkupEnded();
         });
@@ -2637,6 +2740,9 @@
 
   function resumePlayback() {
     isPaused = false;
+    // Resuming is a tap, which is the only moment iOS will let the audio graph
+    // come back up if something interrupted it.
+    resumeAudioCtx();
     if (playbackPhase === 'announcement') {
       announcementAudio.play().catch(() => {});
       scheduleAnnouncementOverlap();
@@ -2656,7 +2762,7 @@
     cancelFades();
     try { announcementAudio.pause(); announcementAudio.currentTime = 0; } catch (_) {}
     try { walkupAudio.pause(); walkupAudio.currentTime = 0; } catch (_) {}
-    walkupAudio.volume = MUSIC_FULL_VOL;
+    setWalkupLevel(MUSIC_FULL_VOL);
     announcementAudio.volume = 1;
     playbackPhase = null;
     isPaused = false;
@@ -2666,20 +2772,104 @@
     startKeepalive();
   }
 
+  // === Walk-up level =======================================================
+  // iOS reserves volume for the hardware buttons: assigning to
+  // HTMLMediaElement.volume there does nothing and the property keeps reading
+  // back 1. Every duck and every fade this app performs was therefore silent on
+  // the phone it is actually used on — a song played at full level straight over
+  // the spoken announcement, then stopped dead at the cap instead of fading out.
+  //
+  // Where the element's own volume works, keep using it: that path is the one
+  // least likely to break. Where it doesn't, route the walk-up element through a
+  // Web Audio gain node, which iOS does honour.
+  //
+  // Only the walk-up element is ever routed. A routed element reaches the
+  // speakers only through the graph, and iOS suspends an AudioContext while the
+  // page is backgrounded, so between-innings music, the team intro and the
+  // soundboard deliberately stay on the plain path — those are the ones that
+  // play unattended, and they must not depend on the context being awake.
+  const canSetElementVolume = (() => {
+    try {
+      const probe = new Audio();
+      probe.volume = 0.5;
+      return Math.abs(probe.volume - 0.5) < 0.01;
+    } catch (_) { return false; }
+  })();
+
+  let walkupLevel = 1;        // the level we last asked for, 0-1
+  let walkupGain = null;      // gain node, once routed
+  let walkupSource = null;
+
+  // Route the walk-up element through a gain node. Only ever called from inside
+  // the tap that starts playback, and only once the context is actually running:
+  // routing an element into a suspended context mutes it outright, which would
+  // be far worse than the loudness it is here to fix.
+  function ensureWalkupRouting() {
+    if (canSetElementVolume || walkupGain) return walkupGain;
+    const ctx = ensureAudioCtx();
+    if (!ctx || ctx.state !== 'running') return null;
+    try {
+      walkupSource = ctx.createMediaElementSource(walkupAudio);
+      walkupGain = ctx.createGain();
+      walkupGain.gain.value = walkupLevel;
+      walkupSource.connect(walkupGain).connect(ctx.destination);
+    } catch (err) {
+      // Leaves the app on the plain path: no quieter than it was before.
+      console.warn('Walk-up gain routing unavailable', err);
+      walkupGain = null;
+      walkupSource = null;
+    }
+    return walkupGain;
+  }
+
+  function setWalkupLevel(v) {
+    walkupLevel = clamp01(v);
+    if (walkupGain && audioCtx) {
+      try {
+        // A short approach rather than a step: an instant gain change on a
+        // signal that is already sounding clicks.
+        walkupGain.gain.setTargetAtTime(walkupLevel, audioCtx.currentTime, 0.008);
+        return;
+      } catch (_) { /* fall through to the element */ }
+    }
+    walkupAudio.volume = walkupLevel;
+  }
+
+  // Levels are, by their nature, invisible: on a phone there is no devtools and
+  // no way to tell a duck that worked from one that silently did nothing — which
+  // is exactly how the iOS volume problem went unnoticed for a season. This is
+  // the window into it, for a Safari console attached to the phone:
+  //
+  //   walkupDebug()  ->  { level, routed, ctxState, canSetElementVolume, gain }
+  //
+  window.walkupDebug = () => ({
+    level: Number(walkupLevel.toFixed(3)),
+    routed: !!walkupGain,
+    gainNodeValue: walkupGain ? Number(walkupGain.gain.value.toFixed(3)) : null,
+    ctxState: audioCtx ? audioCtx.state : 'none',
+    canSetElementVolume,
+    elementVolume: walkupAudio.volume,
+    songGain: currentPlayer ? songGain(currentPlayer) : null,
+    song: currentPlayer ? songLine(currentPlayer) : null,
+  });
+
   // === Fade helper ===
+  // Only ever used on the walk-up, and it writes through setWalkupLevel rather
+  // than touching walkupAudio.volume, because on iOS that property is inert —
+  // which is why every fade in this app used to be silent there.
   const activeFades = new Set();
-  function fade(audio, fromVol, toVol, durationMs, onDone) {
+  function fadeWalkup(fromVol, toVol, durationMs, onDone) {
     const start = performance.now();
     const handle = {};
     const tick = () => {
       const t = (performance.now() - start) / durationMs;
       if (t >= 1) {
-        audio.volume = clamp01(toVol);
+        setWalkupLevel(toVol);
         activeFades.delete(handle);
         if (onDone) onDone();
         return;
       }
-      audio.volume = clamp01(fromVol + (toVol - fromVol) * easeInOut(t));
+      setWalkupLevel(fromVol + (toVol - fromVol) * easeInOut(t));
       handle.raf = requestAnimationFrame(tick);
     };
     handle.raf = requestAnimationFrame(tick);
@@ -2877,13 +3067,54 @@
     } catch (_) {}
   }
 
+  // === Shared AudioContext =================================================
+  // One context, used by the Bluetooth keepalive tone and by the walk-up gain
+  // node. Browsers hand it over suspended and only a user gesture will start it,
+  // so the first tap anywhere in the app unlocks it. Without that neither the
+  // keepalive tone nor the gain routing ever ran on iOS — the context sat
+  // suspended for the whole game.
+  let audioCtx = null;
+
+  function ensureAudioCtx() {
+    if (audioCtx) return audioCtx;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) audioCtx = new Ctx();
+    } catch (_) {}
+    return audioCtx;
+  }
+
+  // Safari uses 'interrupted' as well as 'suspended' (a phone call, another app
+  // taking the audio session), so anything that isn't 'running' gets a nudge.
+  function resumeAudioCtx() {
+    const ctx = ensureAudioCtx();
+    if (!ctx || ctx.state === 'running') return;
+    try {
+      const p = ctx.resume();
+      // The moment it comes up, take control of the walk-up level — on a first
+      // tap the state often flips a beat after this call returns.
+      if (p && p.then) p.then(() => { ensureWalkupRouting(); }).catch(() => {});
+    } catch (_) {}
+  }
+
+  function bindAudioUnlock() {
+    const unlock = () => resumeAudioCtx();
+    // Capture phase and passive: this must not interfere with any handler, and
+    // it stays attached because the context can be suspended again at any time.
+    ['pointerdown', 'touchend', 'keydown'].forEach((evt) => {
+      document.addEventListener(evt, unlock, { capture: true, passive: true });
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') resumeAudioCtx();
+    });
+  }
+
   // === Bluetooth speaker keepalive ===
   // Many BT speakers go into power-save / disconnect after ~30s of true
   // silence. When that happens, audio quietly routes back to the phone
   // speaker and the user has no idea. This plays a very quiet, very
   // short tone every 25 seconds while no real audio is playing to keep
   // the link active.
-  let keepaliveCtx = null;
   let keepaliveTimer = null;
   const KEEPALIVE_INTERVAL_MS = 20_000;
   // 30 Hz is below most consumer speakers' usable response curve and below
@@ -2894,17 +3125,8 @@
   const KEEPALIVE_TONE_GAIN = 0.0005;
   const KEEPALIVE_TONE_S = 0.25;
 
-  function ensureKeepaliveCtx() {
-    if (keepaliveCtx) return keepaliveCtx;
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (Ctx) keepaliveCtx = new Ctx();
-    } catch (_) {}
-    return keepaliveCtx;
-  }
-
   function playKeepaliveTone() {
-    const ctx = ensureKeepaliveCtx();
+    const ctx = ensureAudioCtx();
     if (!ctx) return;
     try {
       if (ctx.state === 'suspended') ctx.resume();

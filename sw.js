@@ -19,8 +19,9 @@
 // stored as if they were songs, which cache-first would otherwise have served
 // forever on any device that saw them. v9 added the soundboard stingers to the
 // precache list; v11 is the rename + cull of those clips, and evicts the files
-// that are no longer shipped.
-const CACHE = 'walkup-simple-v11-soundboard';
+// that are no longer shipped; v12 drops the stale library.json that was cached
+// back when this treated it as audio.
+const CACHE = 'walkup-simple-v12-levels';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -131,8 +132,12 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+// Media under audio/ only. The manifests that live down there — library.json,
+// and any other JSON — are data: they have to come from the network first, or an
+// edit to the library (a new song, a corrected level) stays invisible on a
+// device until the cache version happens to change.
 function isAudio(url) {
-  return url.pathname.includes('/audio/');
+  return url.pathname.includes('/audio/') && !url.pathname.endsWith('.json');
 }
 
 // Nothing we serve as audio is anywhere near this small. A response under it
