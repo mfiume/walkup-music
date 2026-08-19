@@ -1531,7 +1531,11 @@
       const searchRow = document.createElement('div');
       searchRow.className = 'song-opt song-opt-deezer-search' + (isFull ? ' is-disabled' : '');
       searchRow.setAttribute('role', 'button');
-      if (isFull) searchRow.setAttribute('aria-disabled', 'true');
+      if (isFull) {
+        searchRow.setAttribute('aria-disabled', 'true');
+        searchRow.setAttribute('aria-label',
+          `Search Deezer — ${p.firstName} already has ${MAX_SONGS_PER_PLAYER} songs`);
+      }
       searchRow.innerHTML = `
         <span class="song-opt-deezer-icon" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>
@@ -1548,7 +1552,6 @@
         const pick = { src: 'library', file: lib.file };
         const at = list.findIndex(x => samePick(x, pick));
         const held = at >= 0;
-        const isActive = held && at === active;
         // 'Default' tag shows only on this player's own default song, so they
         // can see which one switches back. We don't attribute any song to other
         // players — every song is just a library entry.
@@ -1557,19 +1560,25 @@
 
         const row = document.createElement('div');
         row.className = 'song-opt' +
-                        (isActive ? ' active' : '') +
-                        (held && !isActive ? ' in-list' : '') +
+                        (held ? ' in-list' : '') +
                         (blocked ? ' is-disabled' : '');
-        row.setAttribute('role', 'radio');
-        row.setAttribute('aria-checked', isActive ? 'true' : 'false');
+        // Neither a radio nor a checkbox: tapping a library row means "give this
+        // song to the player and play it", and tapping one they already hold
+        // switches to it. Nothing here removes anything, so the label says what
+        // the tap will actually do.
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', blocked
+          ? `${lib.song} — ${p.firstName} already has ${MAX_SONGS_PER_PLAYER} songs`
+          : (held
+            ? `Play ${lib.song} for ${p.firstName}`
+            : `Add ${lib.song} to ${p.firstName}'s songs`));
         if (blocked) row.setAttribute('aria-disabled', 'true');
         row.dataset.pnum = String(p.number);
         row.dataset.file = lib.file;
 
         const tags = [];
         if (isOwnDefault) tags.push('<span class="song-opt-tag">Default</span>');
-        if (isActive) tags.push('<span class="song-opt-tag playing-tag">Playing</span>');
-        else if (held) tags.push('<span class="song-opt-tag held-tag">Added</span>');
+        if (held) tags.push('<span class="song-opt-tag held-tag">Added</span>');
 
         row.innerHTML = `
           <button class="song-opt-preview" type="button" aria-label="Preview ${escapeHtml(lib.song)}">

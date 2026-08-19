@@ -1221,7 +1221,7 @@ h3 {
    disappearing and leaving the coach hunting for a song that was there a
    moment ago. */
 .song-opt.is-disabled {
-  opacity: 0.38;
+  opacity: 0.45;
   cursor: default;
   pointer-events: none;
 }
