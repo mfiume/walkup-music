@@ -613,22 +613,38 @@
   // length without the app fetching files it may never play.
   //
   // The intro comes first because it is the one you play before anything else
-  // happens; the stingers below it are ordered shortest first, since length is
-  // what separates those in use.
+  // happens; everything below it is ordered shortest first, since length is what
+  // separates a stab you punctuate a play with from a piece you fill a break
+  // with.
   //
-  // Their names are what the clips actually are, which is not what the source
-  // pages called them. Five were downloaded; two were the same bugle charge call
-  // as the first stinger here, a whole tone lower, so they were dropped rather
-  // than shipped as three rows that sound the same. Filenames match the names,
-  // so the directory reads the way the tab does.
+  // Names are what the clips actually are, which is not always what the source
+  // called them. Of the first five downloaded, two were the same bugle charge
+  // call as the third row here, a whole tone lower, and were dropped rather than
+  // shipped as three rows that sound the same. Filenames match the names, so the
+  // directory reads the way the tab does.
+  //
+  // Everything here is levelled to one loudness on the way in — see
+  // scripts/import_sfx.py. By loudness, not by RMS: a stadium organ is all
+  // transient, and going by RMS would have made these imports several dB louder
+  // than the board they were joining.
   const SOUNDBOARD = [
     { file: 'audio/simple/team-intro.wav', name: 'Your Bloordale Bombers', duration: 7.2 },
     { file: 'audio/sfx/charge.mp3', name: 'Charge', duration: 2.9,
       source: 'https://www.myinstants.com/en/instant/homerun-baseball-71397/' },
+    { file: 'audio/sfx/boom-chick.mp3', name: 'Boom Chick', duration: 12.0,
+      source: 'Boom Chick (Large Stadium Organ) [Crowd Stretch] — Baseball Hockey Sports Crew' },
     { file: 'audio/sfx/charge-climb.mp3', name: 'Charge (Climb)', duration: 13.0,
       source: 'https://www.myinstants.com/en/instant/baseball-charge-organ-13865/' },
     { file: 'audio/sfx/lets-go-bombers.mp3', name: "Let's Go Bombers", duration: 15.2,
       source: 'https://www.myinstants.com/en/instant/charge-baseball-organ-68015/' },
+    { file: 'audio/sfx/ta-da.mp3', name: 'Ta Da!', duration: 18.5,
+      source: 'Ta Da! (Large Stadium Organ) — Baseball Hockey Sports Crew' },
+    { file: 'audio/sfx/lets-go-large-organ.mp3', name: "Let's Go! (Large Organ)", duration: 24.4,
+      source: "Let's Go! (Large Stadium Organ) [4 Modulations] — Baseball Hockey Sports Crew" },
+    { file: 'audio/sfx/lets-go-small-organ.mp3', name: "Let's Go! (Small Organ)", duration: 47.2,
+      source: "Let's Go! (Small Stadium Organ) [Combination] — Baseball Hockey Sports Crew" },
+    { file: 'audio/sfx/mexican-hand-clap.mp3', name: 'Mexican Hand Clap', duration: 57.4,
+      source: 'The Mexican Hand Clap Song — Subatomic Studios' },
   ];
 
   let sfxIdx = -1;                 // index into SOUNDBOARD; -1 = nothing firing
@@ -660,7 +676,7 @@
         <span class="track-meta">
           <span class="track-title">${escapeHtml(sound.name)}</span>
         </span>
-        <span class="track-dur">${Math.round(sound.duration)}s</span>
+        <span class="track-dur">${sfxLength(sound.duration)}</span>
         <span class="track-play">
           <svg class="track-icon-idle" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
           <svg class="track-icon-active" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
@@ -675,6 +691,12 @@
       sfxListEl.appendChild(prog);
     });
     syncSfxRows();
+  }
+
+  // Whole seconds while a clip is under a minute — "18s" reads faster than
+  // "0:18" — and m:ss once it isn't.
+  function sfxLength(seconds) {
+    return seconds >= 60 ? formatTime(seconds) : `${Math.round(seconds)}s`;
   }
 
   // Tapping a row that is already playing stops it. A stinger is short enough

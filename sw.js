@@ -21,7 +21,7 @@
 // precache list; v11 is the rename + cull of those clips, and evicts the files
 // that are no longer shipped; v12 drops the stale library.json that was cached
 // back when this treated it as audio.
-const CACHE = 'walkup-simple-v12-levels';
+const CACHE = 'walkup-simple-v13-organ';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
@@ -83,10 +83,15 @@ const AUDIO = [
   'audio/simple/library/we-on-go.mp3',
   // Pre-game team intro
   'audio/simple/team-intro.wav',
-  // Soundboard stingers (see SOUNDBOARD in app.js)
+  // Soundboard (see SOUNDBOARD in app.js)
+  'audio/sfx/boom-chick.mp3',
   'audio/sfx/charge.mp3',
   'audio/sfx/charge-climb.mp3',
   'audio/sfx/lets-go-bombers.mp3',
+  'audio/sfx/lets-go-large-organ.mp3',
+  'audio/sfx/lets-go-small-organ.mp3',
+  'audio/sfx/mexican-hand-clap.mp3',
+  'audio/sfx/ta-da.mp3',
 ];
 
 // Between-innings Suno tracks are read out of suno-playlist.json rather than
