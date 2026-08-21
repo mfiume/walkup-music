@@ -33,13 +33,15 @@
   // the same thing for everyone: full level, and the level music sits at while
   // the announcement is still talking.
   const MUSIC_FULL_VOL = 1.0;
-  // ≈ -14 dB under the song's own full level. Set from measurement, not taste:
-  // the announcements run -16 to -19 dB mean and songs sit at -14 dB after their
-  // gain, so this puts the bed around -28 dB and leaves the spoken name about
-  // 12 dB clear of it — a broadcast-ish ratio. The old -9 dB left only 6 dB,
-  // which is muddy even when the ducking works. This is the one number to change
-  // if music should sit further under the voice, or closer to it.
-  const MUSIC_DUCKED_VOL = 0.2;
+  // ≈ -11 dB under the song's own full level: how far the music sits beneath a
+  // name being announced. Started at -14 dB, which was set from measurement
+  // (announcements run -16 to -19 dB mean, songs sit at -14 after their gain) and
+  // came out a touch thin on the field, so the bed is 3 dB up from that. It now
+  // lands around -25 dB with the name roughly 9 dB clear of it — still inside the
+  // 8-to-12 dB a broadcast would use. This is the one number to move if the music
+  // should sit further under the voice or closer to it; the mixes re-render
+  // themselves when it changes.
+  const MUSIC_DUCKED_VOL = 0.28;
   const MUSIC_RAMP_S = 0.9;         // ramp from ducked → full once announcement ends
   // Where the measured gains aim. Keep in step with scripts/measure_song_gain.py.
   const TARGET_MEAN_DBFS = -14;
@@ -1337,7 +1339,19 @@
       song,
       playbackMode,
       pickGain(pick, player).toFixed(3),
+      mixRecipe(),
     ].join('|');
+  }
+
+  // The shape of the render itself: how far the music ducks, how quickly it
+  // comes back, the fades either side. Part of a mix's identity so that tuning
+  // any of it re-renders every at-bat instead of leaving yesterday's balance on
+  // disk with today's name on it.
+  function mixRecipe() {
+    return [
+      MUSIC_FULL_VOL, MUSIC_DUCKED_VOL, MUSIC_RAMP_S,
+      FADE_IN_S, FADE_OUT_S, OVERLAP_S,
+    ].join(',');
   }
 
   // decodeAudioData needs a BaseAudioContext but not an output device, and an
