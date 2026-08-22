@@ -11,16 +11,22 @@
   'use strict';
 
   // === Config ===
-  const WALKUP_DURATION_S = 30;     // play-through cap for any clip
-  // Deezer previews are 30s; umpires care about ten-second walk-ups so we
-  // hard-cap any Deezer-sourced clip to this many seconds.
-  const DEEZER_CLIP_DURATION_S = 10;
+  // How long a walk-up runs and how far the music sits under the announced name
+  // are the two things that actually get tuned at a field, so they live in
+  // Settings rather than in here. These are the defaults and the range of each.
+  // Both are part of a mix's identity (see mixRecipe), so moving either
+  // re-renders every at-bat rather than leaving yesterday's balance on disk.
+  const DEFAULT_WALKUP_LENGTH_S = 10;   // what umpires tolerate; Deezer's own cap
+  const WALKUP_LENGTH_MIN_S = 5;
+  const WALKUP_LENGTH_MAX_S = 30;       // a Deezer preview is only 30s long
+  const DEFAULT_DUCK_DB = -11;
+  const DUCK_MIN_DB = -20;              // music barely there under the name
+  const DUCK_MAX_DB = -4;               // music nearly as loud as the name
   // Deezer previews are 30 seconds and we play ten of them, so a track can be
   // set to start anywhere in the first twenty — the hook is rarely at the top
   // of the preview. Clamped against the real duration at play time in case a
   // preview ever comes back shorter than the nominal thirty seconds.
   const DEEZER_PREVIEW_S = 30;
-  const MAX_CLIP_START_S = DEEZER_PREVIEW_S - DEEZER_CLIP_DURATION_S;
   const FADE_IN_S = 0.3;            // soft fade-in when music starts (never cuts)
   const FADE_OUT_S = 1.5;           // soft fade-out at the end of any clip
   const OVERLAP_S = 1.2;            // start music this many seconds before announcement ends
@@ -41,7 +47,8 @@
   // 8-to-12 dB a broadcast would use. This is the one number to move if the music
   // should sit further under the voice or closer to it; the mixes re-render
   // themselves when it changes.
-  const MUSIC_DUCKED_VOL = 0.28;
+  // Read below from duckLevel(); the slider stores decibels because that is what
+  // the ear hears and what these conversations are conducted in.
   const MUSIC_RAMP_S = 0.9;         // ramp from ducked → full once announcement ends
   // Where the measured gains aim. Keep in step with scripts/measure_song_gain.py.
   const TARGET_MEAN_DBFS = -14;
@@ -69,6 +76,28 @@
   // 'overlap' (music plays under announcement from t=0 then ramps up).
   // Overlap is the default — feels more like a real stadium walk-up.
   let playbackMode = localStorage.getItem('walkup-simple-mode') || 'overlap';
+
+  let walkupLengthS = (() => {
+    const n = parseFloat(localStorage.getItem('walkup-simple-length'));
+    return Number.isFinite(n) ? clampRange(n, WALKUP_LENGTH_MIN_S, WALKUP_LENGTH_MAX_S)
+                              : DEFAULT_WALKUP_LENGTH_S;
+  })();
+
+  let duckDb = (() => {
+    const n = parseFloat(localStorage.getItem('walkup-simple-duck-db'));
+    return Number.isFinite(n) ? clampRange(n, DUCK_MIN_DB, DUCK_MAX_DB) : DEFAULT_DUCK_DB;
+  })();
+
+  function clampRange(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // The duck as an amplitude multiplier, which is what the mixer wants.
+  function duckLevel() { return Math.pow(10, duckDb / 20); }
+
+  // How far into a Deezer preview a clip may start: whatever is left of the
+  // thirty seconds once the walk-up length is taken out.
+  function maxClipStartS() {
+    return Math.max(0, DEEZER_PREVIEW_S - walkupLengthS);
+  }
 
   // A player can carry up to three walk-up songs, one of which is playing.
   // Saved as { [playerNumber]: { songs: [pick, ...], active: <index> } }, where
@@ -1169,7 +1198,7 @@
     const pick = list[idx];
     if (!pick || pick.src !== 'deezer') return;
 
-    const start = Math.max(0, Math.min(MAX_CLIP_START_S, Math.round(seconds * 2) / 2));
+    const start = Math.max(0, Math.min(maxClipStartS(), Math.round(seconds * 2) / 2));
     const next = list.slice();
     next[idx] = { ...pick, start };
     writePlayerSongs(playerNumber, next, active);
@@ -1349,7 +1378,7 @@
   // disk with today's name on it.
   function mixRecipe() {
     return [
-      MUSIC_FULL_VOL, MUSIC_DUCKED_VOL, MUSIC_RAMP_S,
+      MUSIC_FULL_VOL, duckDb, walkupLengthS, MUSIC_RAMP_S,
       FADE_IN_S, FADE_OUT_S, OVERLAP_S,
     ].join(',');
   }
@@ -1400,7 +1429,7 @@
   // shape the live path used to attempt, drawn once where it works.
   function scheduleMixGain(gainNode, opts) {
     const { musicAt, musicLen, voiceEnd, level } = opts;
-    const ducked = level * MUSIC_DUCKED_VOL;
+    const ducked = level * duckLevel();
     const end = musicAt + musicLen;
     const g = gainNode.gain;
 
@@ -1429,7 +1458,7 @@
     ]);
     if (!music) return null;
 
-    const cap = pick.src === 'deezer' ? DEEZER_CLIP_DURATION_S : WALKUP_DURATION_S;
+    const cap = walkupLengthS;
     const start = pick.src === 'deezer'
       ? Math.max(0, Math.min(Number(pick.start) || 0, Math.max(0, music.duration - 1)))
       : 0;
@@ -1597,47 +1626,65 @@
     mixSweepTimer = setTimeout(() => { sweepMixes(); }, 400);
   }
 
+  // A change made while a pass is already running has to be picked up, not
+  // dropped: moving a level slider during the opening render would otherwise do
+  // nothing until something else happened to start another pass. Callers get the
+  // in-flight promise back, so awaiting it waits for their change too.
+  let mixSweepPromise = null;
+  let mixSweepQueued = false;
+
+  function sweepMixes() {
+    if (mixSweepPromise) {
+      mixSweepQueued = true;
+      return mixSweepPromise;
+    }
+    mixSweepPromise = (async () => {
+      try {
+        do {
+          mixSweepQueued = false;
+          await sweepMixesOnce();
+        } while (mixSweepQueued);
+      } finally {
+        mixSweepPromise = null;
+      }
+    })();
+    return mixSweepPromise;
+  }
+
   // Render whatever is missing, one at a time so the interface stays responsive,
   // then drop anything on disk that nothing refers to any more.
-  let mixSweepRunning = false;
-  async function sweepMixes() {
-    if (mixSweepRunning) return;
-    mixSweepRunning = true;
-    try {
-      const wanted = wantedMixKeys();
-      const wantedKeys = new Set(wanted.map((w) => w.key));
+  async function sweepMixesOnce() {
+    const wanted = wantedMixKeys();
+    const wantedKeys = new Set(wanted.map((w) => w.key));
 
-      for (const { key, player, pick } of wanted) {
-        if (mixKnown.has(key) || mixUrlCache.has(key)) continue;
-        if (await mixDbGet(key)) { mixKnown.add(key); continue; }
-        try {
-          const blob = await renderAtBatMix(player, pick);
-          if (blob) {
-            await mixDbPut(key, blob);
-            mixKnown.add(key);
-          }
-        } catch (err) {
-          console.warn('Could not render an at-bat mix', err);
+    for (const { key, player, pick } of wanted) {
+      if (mixKnown.has(key) || mixUrlCache.has(key)) continue;
+      if (await mixDbGet(key)) { mixKnown.add(key); continue; }
+      try {
+        const blob = await renderAtBatMix(player, pick);
+        if (blob) {
+          await mixDbPut(key, blob);
+          mixKnown.add(key);
         }
-        await new Promise((r) => setTimeout(r, 30));   // let the UI breathe
+      } catch (err) {
+        console.warn('Could not render an at-bat mix', err);
       }
-
-      for (const key of await mixDbKeys()) {
-        if (!wantedKeys.has(key)) {
-          await mixDbDelete(key);
-          mixKnown.delete(key);
-        }
-      }
-      await warmMixUrls();
-    } finally {
-      mixSweepRunning = false;
+      await new Promise((r) => setTimeout(r, 30));   // let the UI breathe
     }
+
+    for (const key of await mixDbKeys()) {
+      if (!wantedKeys.has(key)) {
+        await mixDbDelete(key);
+        mixKnown.delete(key);
+      }
+    }
+    await warmMixUrls();
   }
 
   // === Deezer integration ===
   // Search Deezer's public API for a song, preview it inline, and on "Use"
   // download the 30s MP3 preview into IndexedDB so it plays as the player's
-  // walk-up. The clip is hard-capped at DEEZER_CLIP_DURATION_S (10s) so we
+  // walk-up. The clip is capped at the walk-up length set in Settings, so we
   // don't outstay our welcome with the umpires.
   const DEEZER_DB_NAME = 'walkup-simple-deezer';
   const DEEZER_DB_VERSION = 1;
@@ -1787,7 +1834,7 @@
   // target. Never boosts: commercial masters peak within a dB of full scale, so
   // a boost would clip.
   async function measureClipGain(trackId, blob, opts = {}) {
-    const { start = 0, seconds = DEEZER_CLIP_DURATION_S } = opts;
+    const { start = 0, seconds = walkupLengthS } = opts;
     try {
       const audio = await decodeClip(trackId, blob);
       if (!audio) return null;
@@ -2036,7 +2083,7 @@
           // A Deezer row auditions exactly the ten seconds the plate will hear.
           togglePreview(previewSrc(), previewBtn, pick.src === 'deezer'
             ? { start: Number(rangeInput ? rangeInput.value : pickStart) || 0,
-                seconds: DEEZER_CLIP_DURATION_S }
+                seconds: walkupLengthS }
             : {});
         });
 
@@ -2068,12 +2115,12 @@
           startRow.className = 'song-start' + (isActive ? ' on-active' : '');
           startRow.innerHTML = `
             <span class="song-start-label">Starts</span>
-            <input class="song-start-range" type="range"
-                   min="0" max="${MAX_CLIP_START_S}" step="0.5" value="${pickStart}"
+            <input class="app-range song-start-range" type="range"
+                   min="0" max="${maxClipStartS()}" step="0.5" value="${Math.min(pickStart, maxClipStartS())}"
                    aria-label="Start ${escapeHtml(info.title)} this many seconds in">
             <span class="song-start-value">${formatStartLabel(pickStart)}</span>
           `;
-          rangeInput = startRow.querySelector('.song-start-range');
+          rangeInput = startRow.querySelector('.app-range');
           const valueEl = startRow.querySelector('.song-start-value');
 
           // Live while dragging, saved on release: a re-measure per pixel of
@@ -2091,7 +2138,7 @@
             if (wasAuditioning) {
               stopPreview();
               togglePreview(previewSrc(), previewBtn,
-                { start: seconds, seconds: DEEZER_CLIP_DURATION_S });
+                { start: seconds, seconds: walkupLengthS });
             }
           });
           row.appendChild(startRow);
@@ -2440,7 +2487,86 @@
       });
     });
     paint();
+    bindLevelSliders();
     renderSongOptionsList();
+  }
+
+  // The two numbers that used to be constants in this file, and that Marc used
+  // to ask me to change: how far the music sits under the announced name, and
+  // how long a walk-up runs. Both are in a mix's identity, so releasing either
+  // slider re-renders every at-bat; the note underneath says so while it works.
+  function bindLevelSliders() {
+    const duckRange = document.getElementById('duck-range');
+    const duckValue = document.getElementById('duck-value');
+    const lengthRange = document.getElementById('length-range');
+    const lengthValue = document.getElementById('length-value');
+    const note = document.getElementById('levels-note');
+    if (!duckRange || !lengthRange) return;
+
+    duckRange.min = String(DUCK_MIN_DB);
+    duckRange.max = String(DUCK_MAX_DB);
+    lengthRange.min = String(WALKUP_LENGTH_MIN_S);
+    lengthRange.max = String(WALKUP_LENGTH_MAX_S);
+    duckRange.value = String(duckDb);
+    lengthRange.value = String(walkupLengthS);
+    const paintValues = () => {
+      duckValue.textContent = `${Number(duckRange.value)} dB`;
+      lengthValue.textContent = `${Number(lengthRange.value)}s`;
+    };
+    paintValues();
+
+    const remix = async () => {
+      if (note) {
+        note.textContent = 'Re-mixing every at-bat…';
+        note.classList.add('working');
+      }
+      // Re-render now rather than on a timer: the coach is standing in Settings
+      // waiting to hear the difference.
+      await sweepMixes();
+      if (note) {
+        note.textContent = 'Every at-bat is re-mixed when either of these moves, which takes a few seconds.';
+        note.classList.remove('working');
+      }
+    };
+
+    // Live label while dragging; save and re-render on release.
+    duckRange.addEventListener('input', paintValues);
+    lengthRange.addEventListener('input', paintValues);
+
+    duckRange.addEventListener('change', () => {
+      duckDb = clampRange(Number(duckRange.value), DUCK_MIN_DB, DUCK_MAX_DB);
+      try { localStorage.setItem('walkup-simple-duck-db', String(duckDb)); } catch (_) {}
+      applySongSelections();
+      remix();
+    });
+
+    lengthRange.addEventListener('change', () => {
+      walkupLengthS = clampRange(Number(lengthRange.value),
+                                 WALKUP_LENGTH_MIN_S, WALKUP_LENGTH_MAX_S);
+      try { localStorage.setItem('walkup-simple-length', String(walkupLengthS)); } catch (_) {}
+      // A longer walk-up leaves less of a Deezer preview to start late in, so
+      // any start point past the new ceiling is pulled back.
+      trimStartPointsToLength();
+      applySongSelections();
+      renderSongOptionsList();
+      remix();
+    });
+  }
+
+  // Keep every saved start point inside what the current walk-up length allows.
+  function trimStartPointsToLength() {
+    const ceiling = maxClipStartS();
+    let changed = false;
+    Object.keys(playerSongs).forEach((num) => {
+      const entry = playerSongs[num];
+      ((entry && entry.songs) || []).forEach((pick) => {
+        if (pick && pick.src === 'deezer' && Number(pick.start) > ceiling) {
+          pick.start = ceiling;
+          changed = true;
+        }
+      });
+    });
+    if (changed) saveSongs();
   }
 
   // === Roster (preview) ===
@@ -3136,13 +3262,11 @@
     fadeWalkup(0, targetVol, FADE_IN_S * 1000);
   }
 
-  // Cap for the current player's walk-up. Deezer-sourced clips are held to
-  // DEEZER_CLIP_DURATION_S (10s) because the umpires aren't going to let us
-  // play a full 30-second preview.
+  // Cap for the current player's walk-up: the length set in Settings, whatever
+  // the song came from.
   function currentWalkupCap() {
     if (playingMix) return effectiveWalkupTotal();
-    if (isCurrentPlayerDeezer()) return DEEZER_CLIP_DURATION_S;
-    return WALKUP_DURATION_S;
+    return walkupLengthS;
   }
 
   // True when the current player's walk-up is a (loaded) Deezer preview.
@@ -3170,7 +3294,7 @@
     // is, and that starts at the top.
     if (player._deezerTrack && player._deezerTrack._missing) return 0;
     const start = Number(pick.start);
-    return Number.isFinite(start) && start > 0 ? Math.min(start, MAX_CLIP_START_S) : 0;
+    return Number.isFinite(start) && start > 0 ? Math.min(start, maxClipStartS()) : 0;
   }
 
   // How far into the clip we actually play, as opposed to how far into the
@@ -3222,8 +3346,8 @@
 
   // The level music sits at while the announcement is still playing, and the
   // level it ramps up to afterwards.
-  // MUSIC_DUCKED_VOL belongs to the mixer now; the fallback only ever plays the
-  // song on its own, at its measured level.
+  // The duck belongs to the mixer now; the fallback only ever plays the song on
+  // its own, at its measured level.
   function fullVol() { return MUSIC_FULL_VOL * songGain(currentPlayer); }
 
   // The play-through length is the lesser of the configured cap and the audio
@@ -3233,7 +3357,7 @@
     const d = walkupAudio.duration;
     // A rendered at-bat is exactly as long as it is: the cap and the start point
     // were applied when it was made.
-    if (playingMix) return isFinite(d) && d > 0 ? d : WALKUP_DURATION_S;
+    if (playingMix) return isFinite(d) && d > 0 ? d : walkupLengthS;
     const cap = currentWalkupCap();
     // What's left of the file after the start point is what there is to play.
     if (isFinite(d) && d > 0) return Math.min(Math.max(0, d - walkupStartAt()), cap);
@@ -3295,7 +3419,7 @@
       const total = effectiveWalkupTotal();
       // Always schedule a soft fade-out so the song never cuts at the end —
       // whether it's a short 10s library clip or a longer track being capped
-      // at WALKUP_DURATION_S. Schedule by how much music is left from "now"
+      // at the walk-up length. Schedule by how much music is left from "now"
       // (overlap mode starts the music at t=0, so by walkup phase the music
       // is already several seconds in).
       const fadeStartMs = Math.max(
