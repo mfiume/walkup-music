@@ -288,6 +288,9 @@
     renderAvailable();
     updatePlaybackBar();
 
+    // Any Deezer song whose audio has gone missing from this device.
+    fetchMissingDeezerPreviews().catch(() => {});
+
     // Render every at-bat this roster could need, in the background. Cached in
     // IndexedDB, so this is a no-op on every start after the first.
     scheduleMixSweep();
@@ -1679,6 +1682,80 @@
       }
     }
     await warmMixUrls();
+  }
+
+  // === Keeping Deezer songs playable =========================================
+  // Two things that bite a device rather than a feature: a preview link that has
+  // expired, and a preview that isn't on this phone at all because storage was
+  // evicted or the app was reinstalled. Either leaves a pick showing a title the
+  // app cannot sound, so both self-heal at startup.
+
+  // A saved Deezer preview URL carries an expiry in its query string, so a setup
+  // published weeks ago points at links that no longer resolve. The track id
+  // doesn't expire: ask Deezer for the track again and take the fresh preview.
+  async function refreshDeezerPreview(trackId) {
+    const data = await deezerJsonp(`https://api.deezer.com/track/${encodeURIComponent(trackId)}`);
+    const preview = data && data.preview;
+    if (!preview) throw new Error('no preview for that track any more');
+    // Keep the new URL, so the next device to adopt this setup starts from a
+    // link that works.
+    let changed = false;
+    Object.keys(playerSongs).forEach((num) => {
+      const entry = playerSongs[num];
+      ((entry && entry.songs) || []).forEach((pick) => {
+        if (pick && pick.src === 'deezer' && String(pick.trackId) === String(trackId)) {
+          pick.previewUrl = preview;
+          changed = true;
+        }
+      });
+    });
+    if (changed) saveSongs();
+    return preview;
+  }
+
+  // Download any Deezer song this device is missing. Quiet when offline; the
+  // rows say what isn't here and one tap fetches it too.
+  async function fetchMissingDeezerPreviews() {
+    if (!navigator.onLine) return;
+    const missing = [];
+    const seen = new Set();
+    Object.keys(playerSongs).forEach((num) => {
+      const entry = playerSongs[num];
+      ((entry && entry.songs) || []).forEach((pick) => {
+        if (!pick || pick.src !== 'deezer' || !pick.trackId) return;
+        const id = String(pick.trackId);
+        if (deezerBlobUrls[id] || seen.has(id)) return;
+        seen.add(id);
+        missing.push(pick);
+      });
+    });
+    if (!missing.length) return;
+
+    let got = 0;
+    for (const pick of missing) {
+      try {
+        const blob = await ensureDeezerBlob(pick.trackId, pick.previewUrl);
+        await backfillDeezerGain(pick.trackId, blob);
+        got += 1;
+      } catch (_) {
+        // Almost always an expired preview link.
+        try {
+          const fresh = await refreshDeezerPreview(pick.trackId);
+          const blob = await ensureDeezerBlob(pick.trackId, fresh);
+          await backfillDeezerGain(pick.trackId, blob);
+          got += 1;
+        } catch (err) {
+          console.warn(`Could not fetch "${pick.title}"`, err);
+        }
+      }
+    }
+    if (!got) return;
+    applySongSelections();
+    renderSongOptionsList();
+    renderLineup();
+    renderRoster();
+    renderAvailable();
+    scheduleMixSweep();
   }
 
   // === Deezer integration ===

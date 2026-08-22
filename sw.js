@@ -21,7 +21,7 @@
 // precache list; v11 is the rename + cull of those clips, and evicts the files
 // that are no longer shipped; v12 drops the stale library.json that was cached
 // back when this treated it as audio.
-const CACHE = 'walkup-simple-v13-organ';
+const CACHE = 'walkup-simple-v14-levels';
 
 // Core shell — install fails if any of these can't be fetched (they're
 // essential and always present).
