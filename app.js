@@ -267,7 +267,7 @@
     bindSettings();
     bindMediaSession();
     bindDeezerModal();
-    bindAudioUnlock();
+    bindKeepaliveRecovery();
 
     // Restore the lineup cursor so a hard refresh returns to whoever was Up
     // Next / batting, not the leadoff hitter. Falls back to 0 if the saved
@@ -1896,7 +1896,9 @@
   async function decodeClip(trackId, blob) {
     const id = String(trackId);
     if (decodedClip.trackId === id && decodedClip.buffer) return decodedClip.buffer;
-    const ctx = ensureAudioCtx();
+    // The mixer's offline context: decoding needs no output device and no user
+    // gesture, which is why nothing here has to be unlocked first.
+    const ctx = decodeContext();
     if (!ctx || !ctx.decodeAudioData) return null;
     const bytes = await blob.arrayBuffer();
     const buffer = await ctx.decodeAudioData(bytes);
@@ -3252,11 +3254,16 @@
         walkupAudio.src = mix;
       }
       setWalkupLevel(MUSIC_FULL_VOL);
+      stopKeepalive();
       const played = walkupAudio.play();
-      if (played && played.catch) played.catch(err => console.warn('At-bat play failed', err));
+      if (played && played.catch) {
+        played.catch((err) => {
+          console.warn('At-bat play failed', err);
+          noteMediaAction(`play() rejected: ${(err && err.name) || err}`);
+        });
+      }
 
       acquireWakeLock();
-      stopKeepalive();
       setPlayPauseIcon(true);
       startProgressLoop();
       updatePlaybackBar();
@@ -3276,7 +3283,6 @@
     // Unlock / route the audio graph from inside the tap that starts playback:
     // on iOS this is the only moment the browser will let us take control of the
     // level (see the walk-up level section).
-    resumeAudioCtx();
     setWalkupLevel(0);             // every music entry fades in (see startWalkupAudio)
     seekWalkupToStart();
 
@@ -3527,6 +3533,7 @@
     playbackPhase = null;
     playingMix = false;
     isPaused = false;
+    clearMediaPosition();
     setPlayPauseIcon(false);
     releaseWakeLock();
     stopProgressLoop();
@@ -3559,8 +3566,6 @@
 
   function resumePlayback() {
     isPaused = false;
-    // Resuming is a tap, which is when a suspended context can come back.
-    resumeAudioCtx();
     if (playbackPhase === 'announcement') {
       announcementAudio.play().catch(() => {});
     } else if (playbackPhase === 'walkup') {
@@ -3575,6 +3580,7 @@
 
   function stopAll() {
     playingMix = false;
+    clearMediaPosition();
     clearTimeout(walkupFadeTimeout);
     cancelFades();
     try { announcementAudio.pause(); announcementAudio.currentTime = 0; } catch (_) {}
@@ -3632,8 +3638,15 @@
       songGain: currentPlayer ? songGain(currentPlayer) : null,
       song: currentPlayer ? songLine(currentPlayer) : null,
       mode: playbackMode,
+      keepalive: keepaliveAudio ? (keepaliveAudio.paused ? 'paused' : 'playing') : 'missing',
+      sessionState: ('mediaSession' in navigator) ? navigator.mediaSession.playbackState : 'n/a',
+      mediaLog: mediaLog.slice(),
     };
   };
+
+  // Run what the lock screen runs. 'play' | 'pause' | 'nexttrack' |
+  // 'previoustrack' | 'stop'.
+  window.walkupDebug.fire = (action) => runMediaAction(action);
 
   // === Fade helper ===
   // Only ever used on the walk-up, and it writes through setWalkupLevel rather
@@ -3772,42 +3785,106 @@
     return div.innerHTML;
   }
 
-  // === Media Session — iOS Control Center / lock-screen controls ===
-  // Sets the artwork (gold B on green) + title/artist for the current
-  // batter, and wires play/pause/prev/next to the same lineup logic.
-  function bindMediaSession() {
-    if (!('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.setActionHandler('play', () => {
-        if (!currentPlayer && currentBatterIdx >= 0 && lineup.length > 0) {
-          const p = roster.find(x => x.number === lineup[currentBatterIdx]);
-          if (p) { playPlayer(p); return; }
-        }
-        if (!currentPlayer) return;
-        if (isPaused) resumePlayback();
-        else if (!playbackPhase) playPlayer(currentPlayer);
-      });
-      navigator.mediaSession.setActionHandler('pause', () => {
-        if (playbackPhase) pausePlayback();
-      });
-      navigator.mediaSession.setActionHandler('previoustrack', mediaSessionPrev);
-      navigator.mediaSession.setActionHandler('nexttrack', mediaSessionNext);
-    } catch (_) {}
+  // === Media Session — iOS lock screen, Dynamic Island, Control Center =======
+  // The buttons on those surfaces are the only controls with no screen behind
+  // them, so they have to work without anything else being true: the page may
+  // have been in the background for an inning, the previous at-bat may have
+  // finished, and there is nobody watching for an error.
+  //
+  // Three rules came out of that. Every action does something audible rather
+  // than only moving a cursor, because a next button that silently advances the
+  // order reads as broken. Every action is recorded, because a lock screen
+  // cannot be watched while it misbehaves and this log is the only way to know
+  // afterwards whether a tap ever arrived. And the page is kept alive by the
+  // keepalive loop, because none of this runs in a page iOS has frozen.
+  const MEDIA_LOG_KEY = 'walkup-simple-media-log';
+  let mediaLog = (() => {
+    try { return JSON.parse(localStorage.getItem(MEDIA_LOG_KEY) || '[]') || []; }
+    catch (_) { return []; }
+  })();
+
+  function noteMediaAction(text) {
+    const now = new Date();
+    const stamp = `${String(now.getHours()).padStart(2, '0')}:` +
+                  `${String(now.getMinutes()).padStart(2, '0')}:` +
+                  `${String(now.getSeconds()).padStart(2, '0')}`;
+    mediaLog.push(`${stamp} ${text}`);
+    while (mediaLog.length > 14) mediaLog.shift();
+    try { localStorage.setItem(MEDIA_LOG_KEY, JSON.stringify(mediaLog)); } catch (_) {}
   }
 
-  function mediaSessionPrev() {
-    if (lineup.length === 0) return;
-    if (currentBatterIdx < 0) currentBatterIdx = 0;
-    currentBatterIdx = (currentBatterIdx - 1 + lineup.length) % lineup.length;
-    const p = roster.find(x => x.number === lineup[currentBatterIdx]);
-    if (p) playPlayer(p);
+  // The actions, kept as a table rather than as closures, so the same code the
+  // lock screen runs can be run from a console: walkupDebug.fire('nexttrack').
+  // That is the only way to exercise this path without a locked phone in hand.
+  const MEDIA_ACTIONS = {};
+
+  function runMediaAction(action) {
+    const fn = MEDIA_ACTIONS[action];
+    if (!fn) { noteMediaAction(`${action} has no handler`); return 'no handler'; }
+    try {
+      const said = fn() || '';
+      noteMediaAction(`${action} ${said}`.trim());
+      return said;
+    } catch (err) {
+      noteMediaAction(`${action} threw: ${(err && err.message) || err}`);
+      return 'threw';
+    }
   }
-  function mediaSessionNext() {
-    if (lineup.length === 0) return;
+
+  function bindMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+
+    const handle = (action, fn) => {
+      MEDIA_ACTIONS[action] = fn;
+      try {
+        navigator.mediaSession.setActionHandler(action, () => runMediaAction(action));
+      } catch (_) {
+        // A browser that doesn't know this action; nothing to do about it.
+      }
+    };
+
+    handle('play', () => {
+      // Whatever is loaded and paused, resume it. Otherwise send up whoever the
+      // order is pointing at: from a lock screen, "play" can only mean that.
+      if (isPaused && currentPlayer) { resumePlayback(); return 'resumed'; }
+      const player = currentPlayer || batterAtCursor();
+      if (!player) return 'nothing queued';
+      playPlayer(player);
+      return `played #${player.number}`;
+    });
+
+    handle('pause', () => {
+      if (playbackPhase) { pausePlayback(); return 'paused'; }
+      return 'nothing playing';
+    });
+
+    // Next and previous always play, rather than moving the cursor and waiting
+    // for a tap that a locked phone cannot deliver.
+    handle('previoustrack', () => stepBatterAndPlay(-1));
+    handle('nexttrack', () => stepBatterAndPlay(1));
+
+    // iOS maps the stop control on some surfaces; without a handler it can land
+    // on pause and leave the session in a state we didn't choose.
+    handle('stop', () => {
+      stopAll();
+      if (currentBatterIdx >= 0 && lineup.length > 0) showBarFromLineup();
+      return 'stopped';
+    });
+  }
+
+  function batterAtCursor() {
+    if (currentBatterIdx < 0 || lineup.length === 0) return null;
+    return roster.find(x => x.number === lineup[currentBatterIdx]) || null;
+  }
+
+  function stepBatterAndPlay(delta) {
+    if (lineup.length === 0) return 'no lineup';
     if (currentBatterIdx < 0) currentBatterIdx = 0;
-    currentBatterIdx = (currentBatterIdx + 1) % lineup.length;
-    const p = roster.find(x => x.number === lineup[currentBatterIdx]);
-    if (p) playPlayer(p);
+    currentBatterIdx = (currentBatterIdx + delta + lineup.length) % lineup.length;
+    const player = batterAtCursor();
+    if (!player) return 'no batter there';
+    playPlayer(player);
+    return `played #${player.number}`;
   }
 
   function updateMediaSession() {
@@ -3839,10 +3916,19 @@
     try { navigator.mediaSession.playbackState = state; } catch (_) {}
   }
 
+  // Between batters the keepalive loop is what's technically playing, and its
+  // two seconds would drive the lock screen's scrubber round in circles. So the
+  // position is published while an at-bat runs and cleared the moment it ends.
+  function clearMediaPosition() {
+    if (!('mediaSession' in navigator)) return;
+    if (!navigator.mediaSession.setPositionState) return;
+    try { navigator.mediaSession.setPositionState(); } catch (_) {}
+  }
+
   function updateMediaPosition() {
     if (!('mediaSession' in navigator)) return;
     if (!navigator.mediaSession.setPositionState) return;
-    if (!playbackPhase) return;
+    if (!playbackPhase) { clearMediaPosition(); return; }
     const total = effectiveAtBatTotal();
     const elapsed = atBatElapsed();
     if (!isFinite(total) || total <= 0) return;
@@ -3855,90 +3941,58 @@
     } catch (_) {}
   }
 
-  // === Shared AudioContext =================================================
-  // One context, used by the Bluetooth keepalive tone and by the walk-up gain
-  // node. Browsers hand it over suspended and only a user gesture will start it,
-  // so the first tap anywhere in the app unlocks it. Without that neither the
-  // keepalive tone nor the gain routing ever ran on iOS — the context sat
-  // suspended for the whole game.
-  let audioCtx = null;
-
-  function ensureAudioCtx() {
-    if (audioCtx) return audioCtx;
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (Ctx) audioCtx = new Ctx();
-    } catch (_) {}
-    return audioCtx;
-  }
-
-  // Safari uses 'interrupted' as well as 'suspended' (a phone call, another app
-  // taking the audio session), so anything that isn't 'running' gets a nudge.
-  function resumeAudioCtx() {
-    const ctx = ensureAudioCtx();
-    if (!ctx || ctx.state === 'running') return;
-    try {
-      const p = ctx.resume();
-      if (p && p.catch) p.catch(() => {});
-    } catch (_) {}
-  }
-
-  function bindAudioUnlock() {
-    const unlock = () => resumeAudioCtx();
-    // Capture phase and passive: this must not interfere with any handler, and
-    // it stays attached because the context can be suspended again at any time.
-    ['pointerdown', 'touchend', 'keydown'].forEach((evt) => {
-      document.addEventListener(evt, unlock, { capture: true, passive: true });
-    });
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') resumeAudioCtx();
-    });
-  }
-
-  // === Bluetooth speaker keepalive ===
-  // Many BT speakers go into power-save / disconnect after ~30s of true
-  // silence. When that happens, audio quietly routes back to the phone
-  // speaker and the user has no idea. This plays a very quiet, very
-  // short tone every 25 seconds while no real audio is playing to keep
-  // the link active.
-  let keepaliveTimer = null;
-  const KEEPALIVE_INTERVAL_MS = 20_000;
-  // 30 Hz is below most consumer speakers' usable response curve and below
-  // the typical 40-50 Hz lower edge of human pitch perception. At a gain of
-  // 0.0005 (-66 dBFS) it's effectively silent — but the BT codec still
-  // sees a non-zero waveform and won't trigger the speaker's silence gate.
-  const KEEPALIVE_TONE_HZ = 30;
-  const KEEPALIVE_TONE_GAIN = 0.0005;
-  const KEEPALIVE_TONE_S = 0.25;
-
-  function playKeepaliveTone() {
-    const ctx = ensureAudioCtx();
-    if (!ctx) return;
-    try {
-      if (ctx.state === 'suspended') ctx.resume();
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = KEEPALIVE_TONE_HZ;
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.linearRampToValueAtTime(KEEPALIVE_TONE_GAIN, now + 0.02);
-      gain.gain.linearRampToValueAtTime(0.0001, now + KEEPALIVE_TONE_S);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + KEEPALIVE_TONE_S + 0.05);
-    } catch (_) {}
-  }
+  // === Keepalive =============================================================
+  // A looping, inaudible clip that plays whenever an at-bat isn't. It solves two
+  // problems with one element.
+  //
+  // The first is the lock screen. iOS suspends a page as soon as it stops
+  // playing audio, and an at-bat is over in ten seconds; the Now Playing card
+  // lingers afterwards but the page behind it is frozen, so play, pause, next
+  // and previous all did nothing. A page that never stops playing audio is never
+  // suspended, and its media session handlers keep receiving taps.
+  //
+  // The second is the Bluetooth speaker, which sleeps after about thirty seconds
+  // of true silence and quietly hands playback back to the phone's own speaker.
+  // That used to be a Web Audio oscillator firing every twenty seconds, which
+  // could not work on the device it was written for: iOS suspends an
+  // AudioContext in the background, and an oscillator holds no media session. A
+  // -60 dBFS tone in a media element does both jobs and needs no context at all,
+  // which is why there is no longer one in this file.
+  const keepaliveAudio = document.getElementById('keepalive-audio');
+  let keepaliveWanted = false;
 
   function startKeepalive() {
-    if (keepaliveTimer) return;
-    keepaliveTimer = setInterval(playKeepaliveTone, KEEPALIVE_INTERVAL_MS);
+    keepaliveWanted = true;
+    if (!keepaliveAudio || !keepaliveAudio.paused) return;
+    keepaliveAudio.volume = 1;      // the file itself is the quiet part
+    const p = keepaliveAudio.play();
+    // Before the first tap iOS refuses, which is fine: nothing is on the lock
+    // screen to press yet, and the first gesture starts it.
+    if (p && p.catch) p.catch(() => {});
   }
 
   function stopKeepalive() {
-    if (keepaliveTimer) {
-      clearInterval(keepaliveTimer);
-      keepaliveTimer = null;
+    keepaliveWanted = false;
+    if (!keepaliveAudio || keepaliveAudio.paused) return;
+    try { keepaliveAudio.pause(); } catch (_) {}
+  }
+
+  // iOS can take the audio session away (a call, another app) and leave the loop
+  // paused, which silently puts us back to a page that will freeze. Any gesture
+  // and any return to the foreground puts it back.
+  function bindKeepaliveRecovery() {
+    const revive = () => { if (keepaliveWanted) startKeepalive(); };
+    ['pointerdown', 'touchend', 'keydown'].forEach((evt) => {
+      document.addEventListener(evt, revive, { capture: true, passive: true });
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') revive();
+    });
+    if (keepaliveAudio) {
+      keepaliveAudio.addEventListener('pause', () => {
+        // Not our doing: try again shortly, quietly.
+        if (keepaliveWanted) setTimeout(revive, 400);
+      });
     }
   }
 

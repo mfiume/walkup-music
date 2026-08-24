@@ -285,6 +285,14 @@
 
   <audio id="announcement-audio" preload="auto"></audio>
   <audio id="walkup-audio" preload="auto"></audio>
+  <!-- Inaudible, looping, and the reason the lock-screen buttons work at all.
+       iOS suspends a page the moment it stops playing audio, so between batters
+       the app was frozen: the Now Playing card lingered but nothing could
+       receive a tap on it. A media element that never stops playing keeps the
+       page alive and the Now Playing session ours. It doubles as the Bluetooth
+       keepalive, which is what the old Web Audio tone was for. -->
+  <audio id="keepalive-audio" loop preload="auto" src="audio/keepalive.wav"></audio>
+
   <audio id="suno-audio" preload="none"></audio>
   <!-- Stingers are short and must fire the instant a pad is tapped, so unlike
        the Suno tracks they are preloaded rather than fetched on demand. -->
@@ -315,6 +323,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=62"></script>
+  <script src="app.js?v=63"></script>
 </body>
 </html>
